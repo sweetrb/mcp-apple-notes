@@ -22,7 +22,7 @@ The AI assistant communicates with this server, which then uses AppleScript to i
 
 ### Using Claude Code (Easiest)
 
-Just ask Claude Code to install it for you:
+If you're using [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (in Terminal or VS Code), just ask Claude to install it:
 
 ```
 Install the apple-notes-mcp MCP server so you can help me manage my Apple Notes
