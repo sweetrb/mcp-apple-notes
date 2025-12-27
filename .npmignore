@@ -1,0 +1,19 @@
+# Source files (compiled output is in build/)
+src/
+
+# Development configuration
+.devcontainer/
+.github/
+.eslintrc.cjs
+.prettierrc
+.nvmrc
+tsconfig.json
+vitest.config.ts
+
+# Test files
+**/*.test.ts
+coverage/
+
+# Other
+*.tgz
+.DS_Store

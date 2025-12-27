@@ -1,0 +1,367 @@
+/**
+ * Type Definitions for Apple Notes MCP Server
+ *
+ * This module contains all TypeScript interfaces and types used throughout
+ * the Apple Notes MCP server. These types model:
+ *
+ * - Apple Notes data structures (notes, folders, accounts)
+ * - AppleScript execution results
+ * - MCP tool parameters
+ *
+ * @module types
+ */
+
+// =============================================================================
+// Apple Notes Data Models
+// =============================================================================
+
+/**
+ * Represents a note in Apple Notes.
+ *
+ * Notes are the primary data type in Notes.app. Each note has:
+ * - A title (derived from the first line of content)
+ * - HTML-formatted body content
+ * - Timestamps for creation and modification
+ * - Optional organization (folders, tags)
+ * - Optional metadata (sharing status, password protection)
+ *
+ * @example
+ * ```typescript
+ * const note: Note = {
+ *   id: "x-coredata://12345/ICNote/p100",
+ *   title: "Shopping List",
+ *   content: "<div>Shopping List</div><div>- Eggs</div>",
+ *   tags: ["personal"],
+ *   created: new Date("2025-01-15"),
+ *   modified: new Date("2025-01-20"),
+ *   folder: "Groceries",
+ *   account: "iCloud"
+ * };
+ * ```
+ */
+export interface Note {
+  /**
+   * Unique identifier for the note.
+   *
+   * This is a CoreData URL in the format:
+   * "x-coredata://DEVICE-UUID/ICNote/pXXXX"
+   *
+   * Note: When creating notes, this may be a temporary timestamp ID
+   * until the actual CoreData ID is retrieved.
+   */
+  id: string;
+
+  /**
+   * Display title of the note.
+   *
+   * In Notes.app, the title is derived from the first line of the note body.
+   * Changing the title changes the first line of content.
+   */
+  title: string;
+
+  /**
+   * HTML-formatted body content of the note.
+   *
+   * Notes.app stores content as HTML. Common elements include:
+   * - `<div>` for paragraphs
+   * - `<br>` for line breaks
+   * - `<b>`, `<i>` for formatting
+   * - `<ul>`, `<ol>`, `<li>` for lists
+   */
+  content: string;
+
+  /**
+   * User-defined tags for organization.
+   *
+   * Note: Apple Notes doesn't natively support tags in its UI,
+   * but this field can be used for application-level organization.
+   */
+  tags: string[];
+
+  /**
+   * Timestamp when the note was created.
+   */
+  created: Date;
+
+  /**
+   * Timestamp when the note was last modified.
+   *
+   * This updates automatically when content changes.
+   */
+  modified: Date;
+
+  /**
+   * Whether the note is shared with other users.
+   *
+   * Shared notes can be collaborated on via iCloud.
+   */
+  shared?: boolean;
+
+  /**
+   * Whether the note is password protected.
+   *
+   * Password-protected notes require authentication to view.
+   * They cannot be read or modified via AppleScript when locked.
+   */
+  passwordProtected?: boolean;
+
+  /**
+   * Name of the folder containing the note.
+   *
+   * If undefined, the note is in the account's default location.
+   */
+  folder?: string;
+
+  /**
+   * Name of the account containing the note.
+   *
+   * Common values: "iCloud", "Gmail", "Exchange"
+   */
+  account?: string;
+}
+
+/**
+ * Represents a folder in Apple Notes.
+ *
+ * Folders provide hierarchical organization for notes within an account.
+ * Each account has a default "Notes" folder plus any user-created folders.
+ *
+ * @example
+ * ```typescript
+ * const folder: Folder = {
+ *   id: "x-coredata://12345/ICFolder/p50",
+ *   name: "Work Projects",
+ *   account: "iCloud"
+ * };
+ * ```
+ */
+export interface Folder {
+  /**
+   * Unique identifier for the folder.
+   *
+   * This is a CoreData URL similar to note IDs.
+   * May be empty if not retrieved from a detailed query.
+   */
+  id: string;
+
+  /**
+   * Display name of the folder.
+   */
+  name: string;
+
+  /**
+   * Name of the account containing the folder.
+   */
+  account: string;
+}
+
+/**
+ * Represents a Notes account.
+ *
+ * Notes.app can sync with multiple account types:
+ * - iCloud (default, most common)
+ * - Gmail (via IMAP)
+ * - Exchange
+ * - Other IMAP providers
+ *
+ * Each account has its own set of folders and notes.
+ *
+ * @example
+ * ```typescript
+ * const account: Account = {
+ *   name: "iCloud"
+ * };
+ * ```
+ */
+export interface Account {
+  /**
+   * Display name of the account.
+   *
+   * This matches what appears in Notes.app's sidebar.
+   */
+  name: string;
+}
+
+// =============================================================================
+// AppleScript Execution
+// =============================================================================
+
+/**
+ * Result from executing an AppleScript command.
+ *
+ * AppleScript commands are executed via the `osascript` command-line tool.
+ * This interface wraps the result in a structured format for easy handling.
+ *
+ * @example
+ * ```typescript
+ * // Successful result
+ * const success: AppleScriptResult = {
+ *   success: true,
+ *   output: "Note 1, Note 2, Note 3"
+ * };
+ *
+ * // Failed result
+ * const failure: AppleScriptResult = {
+ *   success: false,
+ *   output: "",
+ *   error: "Can't get note \"Missing\""
+ * };
+ * ```
+ */
+export interface AppleScriptResult {
+  /**
+   * Whether the script executed successfully.
+   *
+   * True if osascript returned exit code 0.
+   */
+  success: boolean;
+
+  /**
+   * Output from the script (stdout).
+   *
+   * Contains the result value for successful queries,
+   * or empty string on failure.
+   */
+  output: string;
+
+  /**
+   * Error message if execution failed.
+   *
+   * Contains parsed error message from osascript stderr.
+   * Undefined on successful execution.
+   */
+  error?: string;
+}
+
+// =============================================================================
+// MCP Tool Parameters
+// =============================================================================
+
+/**
+ * Parameters for the create-note tool.
+ */
+export interface CreateNoteParams {
+  /** Title for the new note */
+  title: string;
+
+  /** Body content of the note */
+  content: string;
+
+  /** Optional tags for organization */
+  tags?: string[];
+
+  /** Optional folder to create the note in */
+  folder?: string;
+
+  /** Account to use (defaults to iCloud) */
+  account?: string;
+}
+
+/**
+ * Parameters for the search-notes tool.
+ */
+export interface SearchParams {
+  /** Text to search for */
+  query: string;
+
+  /** If true, search note content; if false, search titles only */
+  searchContent?: boolean;
+
+  /** Account to search in (defaults to iCloud) */
+  account?: string;
+}
+
+/**
+ * Parameters for tools that retrieve a note by title.
+ *
+ * Used by: get-note-content, get-note-details, delete-note
+ */
+export interface GetNoteParams {
+  /** Exact title of the note */
+  title: string;
+
+  /** Account to search in (defaults to iCloud) */
+  account?: string;
+}
+
+/**
+ * Parameters for the get-note-by-id tool.
+ */
+export interface GetNoteByIdParams {
+  /** CoreData URL identifier for the note */
+  id: string;
+}
+
+/**
+ * Parameters for the delete-note tool.
+ */
+export interface DeleteNoteParams {
+  /** Exact title of the note to delete */
+  title: string;
+
+  /** Account containing the note (defaults to iCloud) */
+  account?: string;
+}
+
+/**
+ * Parameters for the update-note tool.
+ */
+export interface UpdateNoteParams {
+  /** Current title of the note to update */
+  title: string;
+
+  /** New title for the note (optional, keeps existing if not provided) */
+  newTitle?: string;
+
+  /** New content for the note body */
+  newContent: string;
+
+  /** Account containing the note (defaults to iCloud) */
+  account?: string;
+}
+
+/**
+ * Parameters for the list-notes tool.
+ */
+export interface ListNotesParams {
+  /** Account to list notes from (defaults to iCloud) */
+  account?: string;
+
+  /** Filter to notes in a specific folder */
+  folder?: string;
+}
+
+/**
+ * Parameters for folder operations.
+ *
+ * Used by: create-folder, delete-folder
+ */
+export interface FolderParams {
+  /** Name of the folder */
+  name: string;
+
+  /** Account for the folder (defaults to iCloud) */
+  account?: string;
+}
+
+/**
+ * Parameters for the list-folders tool.
+ */
+export interface ListFoldersParams {
+  /** Account to list folders from (defaults to iCloud) */
+  account?: string;
+}
+
+/**
+ * Parameters for the move-note tool.
+ */
+export interface MoveNoteParams {
+  /** Title of the note to move */
+  title: string;
+
+  /** Name of the destination folder */
+  folder: string;
+
+  /** Account containing the note (defaults to iCloud) */
+  account?: string;
+}

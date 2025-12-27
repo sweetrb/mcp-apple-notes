@@ -1,0 +1,70 @@
+{
+  "name": "apple-notes-mcp",
+  "version": "1.1.0",
+  "description": "MCP server for Apple Notes - create, search, update, and manage notes via Claude",
+  "type": "module",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "files": [
+    "build",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc && tsc-alias",
+    "start": "node build/index.js",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint src --ext .ts",
+    "lint:fix": "ESLINT_USE_FLAT_CONFIG=false eslint src --ext .ts --fix",
+    "format": "prettier --write src",
+    "format:check": "prettier --check src",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run lint && npm run test && npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "apple-notes",
+    "claude",
+    "ai",
+    "applescript",
+    "macos",
+    "notes",
+    "model-context-protocol"
+  ],
+  "author": "Rob Sweet <rob@superiortech.io>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sweetrb/mcp-apple-notes.git"
+  },
+  "homepage": "https://github.com/sweetrb/mcp-apple-notes#readme",
+  "bugs": {
+    "url": "https://github.com/sweetrb/mcp-apple-notes/issues"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "os": [
+    "darwin"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.4.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "tsc-alias": "^1.8.10",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0"
+  },
+  "volta": {
+    "node": "22.13.1"
+  }
+}

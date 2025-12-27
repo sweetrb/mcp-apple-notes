@@ -1,0 +1,824 @@
+/**
+ * Apple Notes Manager
+ *
+ * A comprehensive service for managing Apple Notes through AppleScript.
+ * This module provides a clean TypeScript interface over the Notes.app
+ * AppleScript dictionary, handling all the complexity of script generation,
+ * text escaping, and result parsing.
+ *
+ * Architecture:
+ * - Text escaping is handled by dedicated helper functions
+ * - AppleScript generation uses template builders for consistency
+ * - All public methods return typed results (no raw strings)
+ * - Error handling is consistent across all operations
+ *
+ * @module services/appleNotesManager
+ */
+
+import type { Note, Folder, Account } from "@/types.js";
+import { executeAppleScript } from "@/utils/applescript.js";
+
+// =============================================================================
+// Text Processing Utilities
+// =============================================================================
+
+/**
+ * Escapes text for safe embedding in AppleScript string literals.
+ *
+ * AppleScript strings use double quotes, so we need to escape:
+ * 1. Double quotes (") - escaped as \"
+ * 2. Backslashes (\) - already handled by shell escaping
+ *
+ * Additionally, since our AppleScript is passed through the shell via
+ * `osascript -e '...'`, we need to handle single quotes in the content.
+ *
+ * Finally, Apple Notes uses HTML internally, so we convert control
+ * characters to their HTML equivalents.
+ *
+ * @param text - Raw text to escape
+ * @returns Text safe for AppleScript string embedding
+ *
+ * @example
+ * escapeForAppleScript("Hello \"World\"")
+ * // Returns: Hello \"World\"
+ *
+ * escapeForAppleScript("Line 1\nLine 2")
+ * // Returns: Line 1<br>Line 2
+ */
+export function escapeForAppleScript(text: string): string {
+  // Guard against null/undefined - return empty string
+  if (!text) {
+    return "";
+  }
+
+  // Step 1: Escape single quotes for shell embedding
+  // When we run: osascript -e 'tell app...'
+  // Any single quotes in the script need special handling
+  // Pattern: ' becomes '\'' (end quote, escaped quote, begin quote)
+  let escaped = text.replace(/'/g, "'\\''");
+
+  // Step 2: Escape double quotes for AppleScript strings
+  // AppleScript uses: "hello \"quoted\" world"
+  escaped = escaped.replace(/"/g, '\\"');
+
+  // Step 3: Convert control characters to HTML for Notes.app
+  // Apple Notes stores content as HTML, so we convert:
+  // - Newlines (\n) to <br> tags
+  // - Tabs (\t) to <br> tags (better than &nbsp; for readability)
+  escaped = escaped.replace(/\n/g, "<br>");
+  escaped = escaped.replace(/\t/g, "<br>");
+
+  return escaped;
+}
+
+/**
+ * Converts AppleScript date representation to JavaScript Date.
+ *
+ * AppleScript returns dates in a verbose format like:
+ * "date Saturday, December 27, 2025 at 3:44:02 PM"
+ *
+ * This function extracts the parseable portion and converts it
+ * to a JavaScript Date object.
+ *
+ * @param appleScriptDate - Date string from AppleScript
+ * @returns Parsed Date, or current date if parsing fails
+ *
+ * @example
+ * parseAppleScriptDate("date Saturday, December 27, 2025 at 3:44:02 PM")
+ * // Returns: Date object for Dec 27, 2025 3:44:02 PM
+ */
+export function parseAppleScriptDate(appleScriptDate: string): Date {
+  // Remove the "date " prefix if present
+  const withoutPrefix = appleScriptDate.replace(/^date\s+/, "");
+
+  // Replace " at " with a space for standard date parsing
+  // "Saturday, December 27, 2025 at 3:44:02 PM" ->
+  // "Saturday, December 27, 2025 3:44:02 PM"
+  const normalized = withoutPrefix.replace(" at ", " ");
+
+  // Attempt to parse - JavaScript's Date constructor handles this format
+  const parsed = new Date(normalized);
+
+  // Return parsed date if valid, otherwise current date as fallback
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+// =============================================================================
+// AppleScript Template Builders
+// =============================================================================
+
+/**
+ * Configuration for targeting a specific Notes account.
+ * Used by script builders to scope operations.
+ */
+interface AccountScope {
+  /** Account name (e.g., "iCloud", "Gmail") */
+  account: string;
+}
+
+/**
+ * Builds an AppleScript command wrapped in account context.
+ *
+ * Most Notes.app operations need to be scoped to an account:
+ * ```applescript
+ * tell application "Notes"
+ *   tell account "iCloud"
+ *     -- command here
+ *   end tell
+ * end tell
+ * ```
+ *
+ * This builder generates that wrapper structure.
+ *
+ * @param scope - Account to target
+ * @param command - The AppleScript command to execute
+ * @returns Complete AppleScript ready for execution
+ */
+function buildAccountScopedScript(scope: AccountScope, command: string): string {
+  return `
+    tell application "Notes"
+      tell account "${scope.account}"
+        ${command}
+      end tell
+    end tell
+  `;
+}
+
+/**
+ * Builds an AppleScript command at the application level.
+ *
+ * Some operations (like listing accounts) don't need account scoping:
+ * ```applescript
+ * tell application "Notes"
+ *   -- command here
+ * end tell
+ * ```
+ *
+ * @param command - The AppleScript command to execute
+ * @returns Complete AppleScript ready for execution
+ */
+function buildAppLevelScript(command: string): string {
+  return `
+    tell application "Notes"
+      ${command}
+    end tell
+  `;
+}
+
+// =============================================================================
+// Result Parsing Utilities
+// =============================================================================
+
+/**
+ * Parses a comma-separated list from AppleScript output.
+ *
+ * AppleScript often returns lists as comma-separated strings:
+ * "Note 1, Note 2, Note 3"
+ *
+ * This function splits and cleans the output.
+ *
+ * @param output - Raw AppleScript output
+ * @returns Array of trimmed, non-empty strings
+ */
+function parseCommaSeparatedList(output: string): string[] {
+  return output
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+/**
+ * Extracts a CoreData ID from AppleScript output.
+ *
+ * Notes.app uses CoreData URLs as unique identifiers:
+ * "note id x-coredata://ABC123-DEF456/ICNote/p789"
+ *
+ * This function extracts the ID portion.
+ *
+ * @param output - AppleScript output containing an ID reference
+ * @param prefix - The object type prefix (e.g., "note", "folder")
+ * @returns Extracted ID or empty string
+ */
+function extractCoreDataId(output: string, prefix: string): string {
+  const pattern = new RegExp(`${prefix} id ([^\\s]+)`);
+  const match = output.match(pattern);
+  return match ? match[1] : "";
+}
+
+// =============================================================================
+// Apple Notes Manager Class
+// =============================================================================
+
+/**
+ * Manages interactions with Apple Notes via AppleScript.
+ *
+ * This class provides a high-level TypeScript interface for all
+ * Notes.app operations. It handles:
+ *
+ * - Note CRUD operations (create, read, update, delete)
+ * - Note organization (folders, moving between folders)
+ * - Multi-account support (iCloud, Gmail, Exchange, etc.)
+ * - Search functionality (by title or content)
+ *
+ * All operations are synchronous since they rely on AppleScript
+ * execution via osascript. Error handling is consistent: methods
+ * return null/false/empty-array on failure rather than throwing.
+ *
+ * @example
+ * ```typescript
+ * const notes = new AppleNotesManager();
+ *
+ * // Create a note in the default (iCloud) account
+ * const note = notes.createNote("Shopping List", "Eggs, Milk, Bread");
+ *
+ * // Search across all notes
+ * const results = notes.searchNotes("shopping", true); // searches content
+ *
+ * // Work with a different account
+ * const gmailNotes = notes.listNotes("Gmail");
+ * ```
+ */
+export class AppleNotesManager {
+  /**
+   * Default account used when no account is specified.
+   * iCloud is the primary account for most Apple Notes users.
+   */
+  private readonly defaultAccount = "iCloud";
+
+  /**
+   * Resolves the account to use for an operation.
+   * Falls back to default if not specified.
+   */
+  private resolveAccount(account?: string): string {
+    return account || this.defaultAccount;
+  }
+
+  // ===========================================================================
+  // Note Operations
+  // ===========================================================================
+
+  /**
+   * Creates a new note in Apple Notes.
+   *
+   * The note is created with the specified title and content. If a folder
+   * is specified, the note is created in that folder; otherwise it goes
+   * to the account's default location.
+   *
+   * @param title - Display title for the note
+   * @param content - Body content (plain text, will be HTML-escaped)
+   * @param tags - Optional tags (stored in returned object, not used by Notes.app)
+   * @param folder - Optional folder name to create the note in
+   * @param account - Account to use (defaults to iCloud)
+   * @returns Created Note object with metadata, or null on failure
+   *
+   * @example
+   * ```typescript
+   * // Simple note creation
+   * const note = manager.createNote("Meeting Notes", "Discussed Q4 plans");
+   *
+   * // Create in a specific folder
+   * const work = manager.createNote("Task List", "1. Review PR", [], "Work");
+   *
+   * // Create in a different account
+   * const gmail = manager.createNote("Draft", "...", [], undefined, "Gmail");
+   * ```
+   */
+  createNote(
+    title: string,
+    content: string,
+    tags: string[] = [],
+    folder?: string,
+    account?: string
+  ): Note | null {
+    const targetAccount = this.resolveAccount(account);
+
+    // Escape content for AppleScript embedding
+    const safeTitle = escapeForAppleScript(title);
+    const safeContent = escapeForAppleScript(content);
+
+    // Build the AppleScript command
+    // Notes.app uses 'name' for the title and 'body' for content
+    let createCommand: string;
+
+    if (folder) {
+      // Create note in specific folder
+      const safeFolder = escapeForAppleScript(folder);
+      createCommand = `make new note at folder "${safeFolder}" with properties {name:"${safeTitle}", body:"${safeContent}"}`;
+    } else {
+      // Create note in default location
+      createCommand = `make new note with properties {name:"${safeTitle}", body:"${safeContent}"}`;
+    }
+
+    // Execute the script
+    const script = buildAccountScopedScript({ account: targetAccount }, createCommand);
+    const result = executeAppleScript(script);
+
+    if (!result.success) {
+      console.error(`Failed to create note "${title}":`, result.error);
+      return null;
+    }
+
+    // Return a Note object representing the created note
+    // Note: We use a timestamp as ID since we can't easily get the real ID
+    const now = new Date();
+    return {
+      id: Date.now().toString(),
+      title,
+      content,
+      tags,
+      created: now,
+      modified: now,
+      folder,
+      account: targetAccount,
+    };
+  }
+
+  /**
+   * Searches for notes matching a query.
+   *
+   * By default, searches note titles. Set searchContent=true to search
+   * the body text instead.
+   *
+   * @param query - Text to search for
+   * @param searchContent - If true, search note bodies; if false, search titles
+   * @param account - Account to search in (defaults to iCloud)
+   * @returns Array of matching notes (with minimal metadata)
+   *
+   * @example
+   * ```typescript
+   * // Search by title
+   * const meetingNotes = manager.searchNotes("meeting");
+   *
+   * // Search in note content
+   * const projectRefs = manager.searchNotes("Project Alpha", true);
+   * ```
+   */
+  searchNotes(query: string, searchContent: boolean = false, account?: string): Note[] {
+    const targetAccount = this.resolveAccount(account);
+    const safeQuery = escapeForAppleScript(query);
+
+    // Build the where clause based on search type
+    // AppleScript uses 'name' for title and 'body' for content
+    const whereClause = searchContent
+      ? `body contains "${safeQuery}"`
+      : `name contains "${safeQuery}"`;
+
+    // Get names of matching notes
+    const searchCommand = `get name of notes where ${whereClause}`;
+    const script = buildAccountScopedScript({ account: targetAccount }, searchCommand);
+    const result = executeAppleScript(script);
+
+    if (!result.success) {
+      console.error(`Failed to search notes for "${query}":`, result.error);
+      return [];
+    }
+
+    // Parse the comma-separated list of note titles
+    const titles = parseCommaSeparatedList(result.output);
+
+    // Convert to Note objects with minimal metadata
+    return titles.map((noteTitle) => ({
+      id: Date.now().toString(),
+      title: noteTitle,
+      content: "", // Not fetched in search
+      tags: [],
+      created: new Date(),
+      modified: new Date(),
+      account: targetAccount,
+    }));
+  }
+
+  /**
+   * Retrieves the HTML content of a note by its title.
+   *
+   * @param title - Exact title of the note
+   * @param account - Account to search in (defaults to iCloud)
+   * @returns HTML content of the note, or empty string if not found
+   *
+   * @example
+   * ```typescript
+   * const content = manager.getNoteContent("Shopping List");
+   * if (content) {
+   *   console.log("Note found:", content);
+   * }
+   * ```
+   */
+  getNoteContent(title: string, account?: string): string {
+    const targetAccount = this.resolveAccount(account);
+    const safeTitle = escapeForAppleScript(title);
+
+    // Retrieve the body property of the note
+    const getCommand = `get body of note "${safeTitle}"`;
+    const script = buildAccountScopedScript({ account: targetAccount }, getCommand);
+    const result = executeAppleScript(script);
+
+    if (!result.success) {
+      console.error(`Failed to get content of note "${title}":`, result.error);
+      return "";
+    }
+
+    return result.output;
+  }
+
+  /**
+   * Retrieves a note by its unique CoreData ID.
+   *
+   * Each note has a unique ID in the format:
+   * "x-coredata://DEVICE-UUID/ICNote/pXXXX"
+   *
+   * This method fetches the note and its metadata using this ID.
+   *
+   * @param id - CoreData URL identifier for the note
+   * @returns Note object with metadata, or null if not found
+   */
+  getNoteById(id: string): Note | null {
+    // Note IDs work at the application level, not scoped to account
+    const getCommand = `
+      set n to note id "${id}"
+      set noteProps to {name of n, id of n, creation date of n, modification date of n, shared of n, password protected of n}
+      return noteProps
+    `;
+    const script = buildAppLevelScript(getCommand);
+    const result = executeAppleScript(script);
+
+    if (!result.success) {
+      console.error(`Failed to get note with ID "${id}":`, result.error);
+      return null;
+    }
+
+    // Parse the complex output
+    // AppleScript returns: "title, id, date DayName, Month Day, Year at Time, date..., bool, bool"
+    // Dates contain commas, so we can't use simple CSV parsing
+    const output = result.output;
+
+    // Extract dates using regex - they start with "date " and end before the next comma-space-lowercase
+    // Pattern matches: "date Saturday, December 27, 2025 at 3:44:02 PM"
+    const dateMatches =
+      output.match(/date [A-Z][^,]*(?:, [A-Z][^,]*)* at \d+:\d+:\d+ [AP]M/g) || [];
+
+    // Extract title (everything before the first comma)
+    const firstComma = output.indexOf(",");
+    if (firstComma === -1) {
+      console.error("Unexpected response format when getting note by ID");
+      return null;
+    }
+    const extractedTitle = output.substring(0, firstComma).trim();
+
+    // Extract ID (between first and second comma)
+    const afterTitle = output.substring(firstComma + 1);
+    const secondComma = afterTitle.indexOf(",");
+    if (secondComma === -1) {
+      console.error("Unexpected response format when getting note by ID");
+      return null;
+    }
+    const extractedId = afterTitle.substring(0, secondComma).trim();
+
+    // Extract boolean values from the end (shared, passwordProtected)
+    // They appear as ", true" or ", false" at the end
+    const boolPattern = /, (true|false), (true|false)$/;
+    const boolMatch = output.match(boolPattern);
+    const shared = boolMatch ? boolMatch[1] === "true" : false;
+    const passwordProtected = boolMatch ? boolMatch[2] === "true" : false;
+
+    return {
+      id: extractedId,
+      title: extractedTitle,
+      content: "", // Not fetched to keep response small
+      tags: [],
+      created: dateMatches[0] ? parseAppleScriptDate(dateMatches[0]) : new Date(),
+      modified: dateMatches[1] ? parseAppleScriptDate(dateMatches[1]) : new Date(),
+      shared,
+      passwordProtected,
+    };
+  }
+
+  /**
+   * Retrieves detailed metadata for a note by title.
+   *
+   * Similar to getNoteContent but returns structured metadata
+   * including creation date, modification date, and sharing status.
+   *
+   * @param title - Exact title of the note
+   * @param account - Account to search in (defaults to iCloud)
+   * @returns Note object with full metadata, or null if not found
+   */
+  getNoteDetails(title: string, account?: string): Note | null {
+    const targetAccount = this.resolveAccount(account);
+    const safeTitle = escapeForAppleScript(title);
+
+    // Fetch multiple properties at once
+    const getCommand = `
+      set n to note "${safeTitle}"
+      set noteProps to {name of n, id of n, creation date of n, modification date of n, shared of n, password protected of n}
+      return noteProps
+    `;
+    const script = buildAccountScopedScript({ account: targetAccount }, getCommand);
+    const result = executeAppleScript(script);
+
+    if (!result.success) {
+      console.error(`Failed to get details for note "${title}":`, result.error);
+      return null;
+    }
+
+    // Parse the complex output
+    // The output contains embedded date objects that complicate simple CSV parsing
+    const output = result.output;
+
+    // Extract dates using regex (they have a recognizable format)
+    const dateMatches = output.match(/date [^,]+/g) || [];
+
+    // Extract title and ID from the beginning
+    const firstComma = output.indexOf(",");
+    const extractedTitle = output.substring(0, firstComma).trim();
+    const afterTitle = output.substring(firstComma + 1);
+    const secondComma = afterTitle.indexOf(",");
+    const extractedId = afterTitle.substring(0, secondComma).trim();
+
+    return {
+      id: extractedId,
+      title: extractedTitle,
+      content: "", // Not fetched
+      tags: [],
+      created: dateMatches[0] ? parseAppleScriptDate(dateMatches[0]) : new Date(),
+      modified: dateMatches[1] ? parseAppleScriptDate(dateMatches[1]) : new Date(),
+      shared: output.includes("true"),
+      passwordProtected: false, // Difficult to parse reliably
+      account: targetAccount,
+    };
+  }
+
+  /**
+   * Deletes a note by its title.
+   *
+   * Note: This permanently deletes the note. It may be recoverable
+   * from the "Recently Deleted" folder in Notes.app.
+   *
+   * @param title - Exact title of the note to delete
+   * @param account - Account containing the note (defaults to iCloud)
+   * @returns true if deletion succeeded, false otherwise
+   */
+  deleteNote(title: string, account?: string): boolean {
+    const targetAccount = this.resolveAccount(account);
+    const safeTitle = escapeForAppleScript(title);
+
+    const deleteCommand = `delete note "${safeTitle}"`;
+    const script = buildAccountScopedScript({ account: targetAccount }, deleteCommand);
+    const result = executeAppleScript(script);
+
+    if (!result.success) {
+      console.error(`Failed to delete note "${title}":`, result.error);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Updates an existing note's content and optionally its title.
+   *
+   * Apple Notes derives the title from the first line of the body,
+   * so updating content also allows title changes. If newTitle is
+   * not provided, the original title is preserved.
+   *
+   * @param title - Current title of the note to update
+   * @param newTitle - New title (optional, keeps existing if not provided)
+   * @param newContent - New content for the note body
+   * @param account - Account containing the note (defaults to iCloud)
+   * @returns true if update succeeded, false otherwise
+   */
+  updateNote(
+    title: string,
+    newTitle: string | undefined,
+    newContent: string,
+    account?: string
+  ): boolean {
+    const targetAccount = this.resolveAccount(account);
+    const safeCurrentTitle = escapeForAppleScript(title);
+
+    // Determine the effective title (new or keep existing)
+    const effectiveTitle = newTitle || title;
+    const safeEffectiveTitle = escapeForAppleScript(effectiveTitle);
+    const safeContent = escapeForAppleScript(newContent);
+
+    // Apple Notes uses HTML body; first <div> becomes the title
+    const fullBody = `<div>${safeEffectiveTitle}</div><div>${safeContent}</div>`;
+
+    const updateCommand = `set body of note "${safeCurrentTitle}" to "${fullBody}"`;
+    const script = buildAccountScopedScript({ account: targetAccount }, updateCommand);
+    const result = executeAppleScript(script);
+
+    if (!result.success) {
+      console.error(`Failed to update note "${title}":`, result.error);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Lists all notes in an account, optionally filtered by folder.
+   *
+   * @param account - Account to list notes from (defaults to iCloud)
+   * @param folder - Optional folder to filter by
+   * @returns Array of note titles
+   */
+  listNotes(account?: string, folder?: string): string[] {
+    const targetAccount = this.resolveAccount(account);
+
+    // Build command based on whether folder filter is specified
+    let listCommand: string;
+
+    if (folder) {
+      const safeFolder = escapeForAppleScript(folder);
+      listCommand = `get name of notes of folder "${safeFolder}"`;
+    } else {
+      listCommand = `get name of notes`;
+    }
+
+    const script = buildAccountScopedScript({ account: targetAccount }, listCommand);
+    const result = executeAppleScript(script);
+
+    if (!result.success) {
+      console.error("Failed to list notes:", result.error);
+      return [];
+    }
+
+    return parseCommaSeparatedList(result.output);
+  }
+
+  // ===========================================================================
+  // Folder Operations
+  // ===========================================================================
+
+  /**
+   * Lists all folders in an account.
+   *
+   * @param account - Account to list folders from (defaults to iCloud)
+   * @returns Array of Folder objects
+   */
+  listFolders(account?: string): Folder[] {
+    const targetAccount = this.resolveAccount(account);
+
+    // Get folder names (simpler than getting full objects)
+    const listCommand = `get name of folders`;
+    const script = buildAccountScopedScript({ account: targetAccount }, listCommand);
+    const result = executeAppleScript(script);
+
+    if (!result.success) {
+      console.error("Failed to list folders:", result.error);
+      return [];
+    }
+
+    // Convert names to Folder objects
+    const names = parseCommaSeparatedList(result.output);
+
+    return names.map((name) => ({
+      id: "", // Would require additional query to get
+      name,
+      account: targetAccount,
+    }));
+  }
+
+  /**
+   * Creates a new folder in an account.
+   *
+   * @param name - Name for the new folder
+   * @param account - Account to create folder in (defaults to iCloud)
+   * @returns Created Folder object, or null on failure
+   */
+  createFolder(name: string, account?: string): Folder | null {
+    const targetAccount = this.resolveAccount(account);
+    const safeName = escapeForAppleScript(name);
+
+    const createCommand = `make new folder with properties {name:"${safeName}"}`;
+    const script = buildAccountScopedScript({ account: targetAccount }, createCommand);
+    const result = executeAppleScript(script);
+
+    if (!result.success) {
+      console.error(`Failed to create folder "${name}":`, result.error);
+      return null;
+    }
+
+    // Extract the folder ID from the response
+    const folderId = extractCoreDataId(result.output, "folder");
+
+    return {
+      id: folderId,
+      name,
+      account: targetAccount,
+    };
+  }
+
+  /**
+   * Deletes a folder from an account.
+   *
+   * Note: This may fail if the folder contains notes.
+   *
+   * @param name - Name of the folder to delete
+   * @param account - Account containing the folder (defaults to iCloud)
+   * @returns true if deletion succeeded, false otherwise
+   */
+  deleteFolder(name: string, account?: string): boolean {
+    const targetAccount = this.resolveAccount(account);
+    const safeName = escapeForAppleScript(name);
+
+    const deleteCommand = `delete folder "${safeName}"`;
+    const script = buildAccountScopedScript({ account: targetAccount }, deleteCommand);
+    const result = executeAppleScript(script);
+
+    if (!result.success) {
+      console.error(`Failed to delete folder "${name}":`, result.error);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Moves a note to a different folder.
+   *
+   * Since AppleScript doesn't support direct note moves, this operation:
+   * 1. Retrieves the source note's content
+   * 2. Creates a new note with that content in the destination folder
+   * 3. Deletes the original note (only if copy succeeded)
+   *
+   * This ensures the note is never lost - if the copy fails, the
+   * original remains untouched. If only the delete fails, the note
+   * exists in the new location (success is still returned).
+   *
+   * @param title - Title of the note to move
+   * @param destinationFolder - Name of the folder to move to
+   * @param account - Account containing the note (defaults to iCloud)
+   * @returns true if move succeeded (or copy succeeded but delete failed)
+   */
+  moveNote(title: string, destinationFolder: string, account?: string): boolean {
+    const targetAccount = this.resolveAccount(account);
+
+    // Step 1: Retrieve the original note's content
+    const originalContent = this.getNoteContent(title, targetAccount);
+
+    if (!originalContent) {
+      console.error(`Cannot move note "${title}": failed to retrieve content`);
+      return false;
+    }
+
+    // Step 2: Create a copy in the destination folder
+    // We need to escape the HTML content for AppleScript embedding
+    const safeFolder = escapeForAppleScript(destinationFolder);
+    const safeContent = originalContent.replace(/"/g, '\\"').replace(/'/g, "'\\''");
+
+    const createCommand = `make new note at folder "${safeFolder}" with properties {body:"${safeContent}"}`;
+    const script = buildAccountScopedScript({ account: targetAccount }, createCommand);
+    const copyResult = executeAppleScript(script);
+
+    if (!copyResult.success) {
+      console.error(
+        `Cannot move note "${title}": failed to create in destination folder:`,
+        copyResult.error
+      );
+      return false;
+    }
+
+    // Step 3: Delete the original (only after successful copy)
+    const deleteSuccess = this.deleteNote(title, targetAccount);
+
+    if (!deleteSuccess) {
+      // The note was copied successfully but we couldn't delete the original.
+      // This is still a partial success - the note exists in the new location.
+      console.error(
+        `Note "${title}" was copied to "${destinationFolder}" but original could not be deleted`
+      );
+      return true;
+    }
+
+    return true;
+  }
+
+  // ===========================================================================
+  // Account Operations
+  // ===========================================================================
+
+  /**
+   * Lists all available Notes accounts.
+   *
+   * Common accounts include iCloud, Gmail, Exchange, and other
+   * email providers configured on the Mac.
+   *
+   * @returns Array of Account objects
+   */
+  listAccounts(): Account[] {
+    const listCommand = `get name of accounts`;
+    const script = buildAppLevelScript(listCommand);
+    const result = executeAppleScript(script);
+
+    if (!result.success) {
+      console.error("Failed to list accounts:", result.error);
+      return [];
+    }
+
+    // Convert names to Account objects
+    const names = parseCommaSeparatedList(result.output);
+
+    return names.map((name) => ({ name }));
+  }
+}
