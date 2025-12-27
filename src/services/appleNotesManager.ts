@@ -363,8 +363,19 @@ export class AppleNotesManager {
       ? `body contains "${safeQuery}"`
       : `name contains "${safeQuery}"`;
 
-    // Get names of matching notes
-    const searchCommand = `get name of notes where ${whereClause}`;
+    // Get names and folder for each matching note
+    // We use a repeat loop to get both properties, separated by a delimiter
+    const searchCommand = `
+      set matchingNotes to notes where ${whereClause}
+      set resultList to {}
+      repeat with n in matchingNotes
+        set noteName to name of n
+        set noteFolder to name of container of n
+        set end of resultList to noteName & "|||" & noteFolder
+      end repeat
+      set AppleScript's text item delimiters to "|||ITEM|||"
+      return resultList as text
+    `;
     const script = buildAccountScopedScript({ account: targetAccount }, searchCommand);
     const result = executeAppleScript(script);
 
@@ -373,19 +384,30 @@ export class AppleNotesManager {
       return [];
     }
 
-    // Parse the comma-separated list of note titles
-    const titles = parseCommaSeparatedList(result.output);
+    // Handle empty results
+    if (!result.output.trim()) {
+      return [];
+    }
 
-    // Convert to Note objects with minimal metadata
-    return titles.map((noteTitle) => ({
-      id: Date.now().toString(),
-      title: noteTitle,
-      content: "", // Not fetched in search
-      tags: [],
-      created: new Date(),
-      modified: new Date(),
-      account: targetAccount,
-    }));
+    // Parse the delimited output: "name|||folder|||ITEM|||name|||folder..."
+    const items = result.output.split("|||ITEM|||");
+
+    const notes: Note[] = [];
+    for (const item of items) {
+      const [title, folder] = item.split("|||");
+      if (!title?.trim()) continue;
+      notes.push({
+        id: Date.now().toString(),
+        title: title.trim(),
+        content: "", // Not fetched in search
+        tags: [] as string[],
+        created: new Date(),
+        modified: new Date(),
+        folder: folder?.trim(),
+        account: targetAccount,
+      });
+    }
+    return notes;
   }
 
   /**

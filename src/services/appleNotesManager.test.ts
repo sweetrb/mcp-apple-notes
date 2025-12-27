@@ -287,18 +287,22 @@ describe("AppleNotesManager", () => {
   // ---------------------------------------------------------------------------
 
   describe("searchNotes", () => {
-    it("returns array of matching notes", () => {
+    it("returns array of matching notes with folder info", () => {
       mockExecuteAppleScript.mockReturnValue({
         success: true,
-        output: "Meeting Notes, Project Plan, Weekly Review",
+        output:
+          "Meeting Notes|||Work|||ITEM|||Project Plan|||Notes|||ITEM|||Weekly Review|||Archive",
       });
 
       const results = manager.searchNotes("notes");
 
       expect(results).toHaveLength(3);
       expect(results[0].title).toBe("Meeting Notes");
+      expect(results[0].folder).toBe("Work");
       expect(results[1].title).toBe("Project Plan");
+      expect(results[1].folder).toBe("Notes");
       expect(results[2].title).toBe("Weekly Review");
+      expect(results[2].folder).toBe("Archive");
     });
 
     it("returns empty array when no matches found", () => {
@@ -327,7 +331,7 @@ describe("AppleNotesManager", () => {
     it("searches content when searchContent is true", () => {
       mockExecuteAppleScript.mockReturnValue({
         success: true,
-        output: "Note with keyword",
+        output: "Note with keyword|||Notes",
       });
 
       manager.searchNotes("project alpha", true);
@@ -340,7 +344,7 @@ describe("AppleNotesManager", () => {
     it("searches titles when searchContent is false", () => {
       mockExecuteAppleScript.mockReturnValue({
         success: true,
-        output: "Project Alpha Notes",
+        output: "Project Alpha Notes|||Notes",
       });
 
       manager.searchNotes("Project Alpha", false);
@@ -348,6 +352,21 @@ describe("AppleNotesManager", () => {
       expect(mockExecuteAppleScript).toHaveBeenCalledWith(
         expect.stringContaining('name contains "Project Alpha"')
       );
+    });
+
+    it("identifies notes in Recently Deleted folder", () => {
+      mockExecuteAppleScript.mockReturnValue({
+        success: true,
+        output: "Old Note|||Recently Deleted|||ITEM|||Active Note|||Notes",
+      });
+
+      const results = manager.searchNotes("note");
+
+      expect(results).toHaveLength(2);
+      expect(results[0].title).toBe("Old Note");
+      expect(results[0].folder).toBe("Recently Deleted");
+      expect(results[1].title).toBe("Active Note");
+      expect(results[1].folder).toBe("Notes");
     });
 
     it("scopes search to specified account", () => {

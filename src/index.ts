@@ -156,7 +156,18 @@ server.tool(
       return successResponse(`No notes found matching "${query}" in ${searchType}`);
     }
 
-    const noteList = notes.map((n) => `  - ${n.title}`).join("\n");
+    // Format each note with folder info, highlighting Recently Deleted
+    const noteList = notes
+      .map((n) => {
+        if (n.folder === "Recently Deleted") {
+          return `  - ${n.title} [DELETED]`;
+        } else if (n.folder) {
+          return `  - ${n.title} (${n.folder})`;
+        }
+        return `  - ${n.title}`;
+      })
+      .join("\n");
+
     return successResponse(`Found ${notes.length} notes (searched ${searchType}):\n${noteList}`);
   }, "Error searching notes")
 );
