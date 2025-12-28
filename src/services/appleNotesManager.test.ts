@@ -112,12 +112,20 @@ describe("escapeForAppleScript", () => {
     });
 
     it("handles backslashes", () => {
+      // Backslashes are escaped for AppleScript (\ becomes \\)
       const result = escapeForAppleScript("path\\to\\file");
-      expect(result).toBe("path\\to\\file");
+      expect(result).toBe("path\\\\to\\\\file");
+    });
+
+    it("handles ampersands", () => {
+      // Ampersands are HTML-encoded for Notes.app (& becomes &amp;)
+      const result = escapeForAppleScript("A && B & C");
+      expect(result).toBe("A &amp;&amp; B &amp; C");
     });
 
     it("handles angle brackets (HTML-like content)", () => {
       // Single quotes become '\'' (shell escape pattern)
+      // Ampersands in attributes would be encoded
       const result = escapeForAppleScript("<script>alert('xss')</script>");
       expect(result).toBe("<script>alert('\\''xss'\\'')</script>");
     });

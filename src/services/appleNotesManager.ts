@@ -51,18 +51,26 @@ export function escapeForAppleScript(text: string): string {
     return "";
   }
 
-  // Step 1: Escape single quotes for shell embedding
+  // Step 1: Escape backslashes first (AppleScript escape character)
+  // Must be done before other escapes that add backslashes
+  let escaped = text.replace(/\\/g, "\\\\");
+
+  // Step 2: Escape single quotes for shell embedding
   // When we run: osascript -e 'tell app...'
   // Any single quotes in the script need special handling
   // Pattern: ' becomes '\'' (end quote, escaped quote, begin quote)
-  let escaped = text.replace(/'/g, "'\\''");
+  escaped = escaped.replace(/'/g, "'\\''");
 
-  // Step 2: Escape double quotes for AppleScript strings
+  // Step 3: Escape double quotes for AppleScript strings
   // AppleScript uses: "hello \"quoted\" world"
   escaped = escaped.replace(/"/g, '\\"');
 
-  // Step 3: Convert control characters to HTML for Notes.app
-  // Apple Notes stores content as HTML, so we convert:
+  // Step 4: Encode HTML special characters for Notes.app
+  // Apple Notes stores content as HTML, so & must be encoded
+  // BEFORE we add any HTML tags like <br>
+  escaped = escaped.replace(/&/g, "&amp;");
+
+  // Step 5: Convert control characters to HTML for Notes.app
   // - Newlines (\n) to <br> tags
   // - Tabs (\t) to <br> tags (better than &nbsp; for readability)
   escaped = escaped.replace(/\n/g, "<br>");
