@@ -14,6 +14,11 @@ vitest.config.ts
 **/*.test.ts
 coverage/
 
+# Claude Code plugin files (marketplace only, not needed for npm)
+.claude-plugin/
+.mcp.json
+skills/
+
 # Other
 *.tgz
 .DS_Store
