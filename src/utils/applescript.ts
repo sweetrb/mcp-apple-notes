@@ -26,6 +26,33 @@ const DEFAULT_MAX_RETRIES = 1;
 const DEFAULT_RETRY_DELAY_MS = 1000;
 
 /**
+ * Check if debug/verbose logging is enabled.
+ * Set DEBUG=1 or DEBUG=true or VERBOSE=1 to enable.
+ */
+const isDebugEnabled = (): boolean => {
+  const debug = process.env.DEBUG;
+  const verbose = process.env.VERBOSE;
+  return debug === "1" || debug === "true" || verbose === "1" || verbose === "true";
+};
+
+/**
+ * Log a debug message if debug mode is enabled.
+ *
+ * @param message - The message to log
+ * @param data - Optional additional data to log
+ */
+function debugLog(message: string, data?: unknown): void {
+  if (!isDebugEnabled()) return;
+
+  const timestamp = new Date().toISOString();
+  if (data !== undefined) {
+    console.error(`[DEBUG ${timestamp}] ${message}`, data);
+  } else {
+    console.error(`[DEBUG ${timestamp}] ${message}`);
+  }
+}
+
+/**
  * Escapes a string for safe inclusion in a shell command.
  *
  * When passing AppleScript to osascript via shell, we need to handle
@@ -266,9 +293,18 @@ export function executeAppleScript(
   // single quotes within the script itself
   const command = `osascript -e '${preparedScript}'`;
 
+  // Debug: Log the script being executed
+  debugLog("Executing AppleScript", {
+    scriptPreview: script.trim().substring(0, 200) + (script.length > 200 ? "..." : ""),
+    timeout: timeoutMs,
+    maxRetries,
+  });
+
   let lastError: AppleScriptResult | null = null;
+  const startTime = Date.now();
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const attemptStart = Date.now();
     try {
       // Execute synchronously - MCP tools are inherently synchronous
       // and Apple Notes operations are fast enough that async isn't needed
@@ -279,6 +315,14 @@ export function executeAppleScript(
         stdio: ["pipe", "pipe", "pipe"],
       });
 
+      const duration = Date.now() - attemptStart;
+      debugLog("AppleScript succeeded", {
+        attempt,
+        duration: `${duration}ms`,
+        outputLength: output.length,
+        outputPreview: output.substring(0, 100) + (output.length > 100 ? "..." : ""),
+      });
+
       return {
         success: true,
         output: output.trim(),
@@ -286,9 +330,11 @@ export function executeAppleScript(
     } catch (error: unknown) {
       // execSync throws on non-zero exit codes
       // The error object contains stderr output with AppleScript error details
+      const attemptDuration = Date.now() - attemptStart;
 
       let errorMessage: string;
       let isTimeout = false;
+      let rawError: string | undefined;
 
       // Check for timeout first - provide specific message
       if (isTimeoutError(error)) {
@@ -296,13 +342,25 @@ export function executeAppleScript(
         const timeoutSecs = Math.round(timeoutMs / 1000);
         errorMessage = `Operation timed out after ${timeoutSecs} seconds. Notes.app may be unresponsive or the operation involves too many notes.`;
       } else if (error instanceof Error) {
+        rawError = error.message;
         // Node's ExecException includes stderr in the message
         errorMessage = parseErrorMessage(error.message);
       } else if (typeof error === "string") {
+        rawError = error;
         errorMessage = parseErrorMessage(error);
       } else {
         errorMessage = "AppleScript execution failed with unknown error";
       }
+
+      // Debug: Log error details
+      debugLog("AppleScript failed", {
+        attempt,
+        duration: `${attemptDuration}ms`,
+        totalElapsed: `${Date.now() - startTime}ms`,
+        isTimeout,
+        errorMessage,
+        rawError: rawError?.substring(0, 500),
+      });
 
       lastError = {
         success: false,
