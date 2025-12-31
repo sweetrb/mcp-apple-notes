@@ -34,7 +34,7 @@ import { AppleNotesManager } from "@/services/appleNotesManager.js";
  */
 const server = new McpServer({
   name: "apple-notes",
-  version: "1.2.7",
+  version: "1.2.8",
   description: "MCP server for managing Apple Notes - create, search, update, and organize notes",
 });
 
@@ -333,7 +333,9 @@ server.tool(
     // Check for password protection first for better error message
     const note = notesManager.getNoteDetails(title, account);
     if (!note) {
-      return errorResponse(`Note "${title}" not found`);
+      return errorResponse(
+        `Note "${title}" not found. Use search-notes to find notes, then use the note's ID for reliable operations.`
+      );
     }
     if (note.passwordProtected) {
       return errorResponse(
@@ -366,11 +368,16 @@ server.tool(
   withErrorHandling(({ id, title, account }) => {
     // Prefer ID-based deletion if provided
     if (id) {
+      // Verify note exists first for better error message
+      const note = notesManager.getNoteById(id);
+      if (!note) {
+        return errorResponse(`Note with ID "${id}" not found`);
+      }
       const success = notesManager.deleteNoteById(id);
       if (!success) {
-        return errorResponse(`Failed to delete note with ID "${id}". Note may not exist.`);
+        return errorResponse(`Failed to delete note "${note.title}"`);
       }
-      return successResponse(`Note deleted (by ID)`);
+      return successResponse(`Note deleted: "${note.title}"`);
     }
 
     // Fall back to title-based deletion
@@ -378,9 +385,17 @@ server.tool(
       return errorResponse("Either 'id' or 'title' is required");
     }
 
+    // Verify note exists first for better error message
+    const note = notesManager.getNoteDetails(title, account);
+    if (!note) {
+      return errorResponse(
+        `Note "${title}" not found. Use search-notes to find notes, then use the note's ID for reliable operations.`
+      );
+    }
+
     const success = notesManager.deleteNote(title, account);
     if (!success) {
-      return errorResponse(`Failed to delete note "${title}". Note may not exist.`);
+      return errorResponse(`Failed to delete note "${title}"`);
     }
 
     return successResponse(`Note deleted: "${title}"`);
@@ -400,13 +415,18 @@ server.tool(
   withErrorHandling(({ id, title, folder, account }) => {
     // Prefer ID-based move if provided
     if (id) {
+      // Verify note exists first for better error message
+      const note = notesManager.getNoteById(id);
+      if (!note) {
+        return errorResponse(`Note with ID "${id}" not found`);
+      }
       const success = notesManager.moveNoteById(id, folder, account);
       if (!success) {
         return errorResponse(
-          `Failed to move note with ID "${id}" to folder "${folder}". Note or folder may not exist.`
+          `Failed to move note "${note.title}" to folder "${folder}". Folder may not exist.`
         );
       }
-      return successResponse(`Note moved to "${folder}" (by ID)`);
+      return successResponse(`Note moved: "${note.title}" -> "${folder}"`);
     }
 
     // Fall back to title-based move
@@ -414,10 +434,18 @@ server.tool(
       return errorResponse("Either 'id' or 'title' is required");
     }
 
+    // Verify note exists first for better error message
+    const note = notesManager.getNoteDetails(title, account);
+    if (!note) {
+      return errorResponse(
+        `Note "${title}" not found. Use search-notes to find notes, then use the note's ID for reliable operations.`
+      );
+    }
+
     const success = notesManager.moveNote(title, folder, account);
     if (!success) {
       return errorResponse(
-        `Failed to move note "${title}" to folder "${folder}". Note or folder may not exist.`
+        `Failed to move note "${title}" to folder "${folder}". Folder may not exist.`
       );
     }
 
