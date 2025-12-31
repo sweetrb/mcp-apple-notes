@@ -34,7 +34,7 @@ import { AppleNotesManager } from "@/services/appleNotesManager.js";
  */
 const server = new McpServer({
   name: "apple-notes",
-  version: "1.2.5",
+  version: "1.2.6",
   description: "MCP server for managing Apple Notes - create, search, update, and organize notes",
 });
 
@@ -526,6 +526,32 @@ server.tool(
     const accountList = accounts.map((a) => `  - ${a.name}`).join("\n");
     return successResponse(`Found ${accounts.length} accounts:\n${accountList}`);
   }, "Error listing accounts")
+);
+
+// =============================================================================
+// Diagnostics Tools
+// =============================================================================
+
+// --- health-check ---
+
+server.tool(
+  "health-check",
+  {},
+  withErrorHandling(() => {
+    const result = notesManager.healthCheck();
+
+    const statusIcon = result.healthy ? "✓" : "✗";
+    const statusText = result.healthy ? "All checks passed" : "Issues detected";
+
+    const checkLines = result.checks
+      .map((c) => {
+        const icon = c.passed ? "✓" : "✗";
+        return `  ${icon} ${c.name}: ${c.message}`;
+      })
+      .join("\n");
+
+    return successResponse(`${statusIcon} ${statusText}\n\n${checkLines}`);
+  }, "Error running health check")
 );
 
 // =============================================================================

@@ -1034,4 +1034,82 @@ describe("AppleNotesManager", () => {
       expect(accounts).toEqual([]);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Health Check
+  // ---------------------------------------------------------------------------
+
+  describe("healthCheck", () => {
+    it("returns healthy when all checks pass", () => {
+      mockExecuteAppleScript
+        // Check 1: Notes.app accessible
+        .mockReturnValueOnce({ success: true, output: "ok" })
+        // Check 2: Permissions (get account name)
+        .mockReturnValueOnce({ success: true, output: "iCloud" })
+        // Check 3: listAccounts
+        .mockReturnValueOnce({ success: true, output: "iCloud" })
+        // Check 4: listNotes
+        .mockReturnValueOnce({ success: true, output: "Note 1, Note 2" });
+
+      const result = manager.healthCheck();
+
+      expect(result.healthy).toBe(true);
+      expect(result.checks).toHaveLength(4);
+      expect(result.checks.every((c) => c.passed)).toBe(true);
+    });
+
+    it("returns unhealthy when Notes.app is not accessible", () => {
+      mockExecuteAppleScript.mockReturnValueOnce({
+        success: false,
+        output: "",
+        error: "Application not found",
+      });
+
+      const result = manager.healthCheck();
+
+      expect(result.healthy).toBe(false);
+      expect(result.checks).toHaveLength(1);
+      expect(result.checks[0].name).toBe("notes_app");
+      expect(result.checks[0].passed).toBe(false);
+    });
+
+    it("returns unhealthy with permission hint when not authorized", () => {
+      mockExecuteAppleScript.mockReturnValueOnce({
+        success: false,
+        output: "",
+        error: "not authorized to send Apple events",
+      });
+
+      const result = manager.healthCheck();
+
+      expect(result.healthy).toBe(false);
+      expect(result.checks[0].message).toContain("Automation permissions");
+    });
+
+    it("returns unhealthy when no accounts found", () => {
+      mockExecuteAppleScript
+        .mockReturnValueOnce({ success: true, output: "ok" })
+        .mockReturnValueOnce({ success: true, output: "iCloud" })
+        .mockReturnValueOnce({ success: true, output: "" }); // No accounts
+
+      const result = manager.healthCheck();
+
+      expect(result.healthy).toBe(false);
+      expect(result.checks.find((c) => c.name === "accounts")?.passed).toBe(false);
+    });
+
+    it("includes account names in successful account check", () => {
+      mockExecuteAppleScript
+        .mockReturnValueOnce({ success: true, output: "ok" })
+        .mockReturnValueOnce({ success: true, output: "iCloud" })
+        .mockReturnValueOnce({ success: true, output: "iCloud, Gmail" })
+        .mockReturnValueOnce({ success: true, output: "" });
+
+      const result = manager.healthCheck();
+
+      const accountCheck = result.checks.find((c) => c.name === "accounts");
+      expect(accountCheck?.message).toContain("iCloud");
+      expect(accountCheck?.message).toContain("Gmail");
+    });
+  });
 });

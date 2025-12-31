@@ -391,3 +391,46 @@ export interface MoveNoteParams {
   /** Account containing the note (defaults to iCloud) */
   account?: string;
 }
+
+// =============================================================================
+// Health Check
+// =============================================================================
+
+/**
+ * Individual check result in a health check.
+ */
+export interface HealthCheckItem {
+  /** Name of the check */
+  name: string;
+
+  /** Whether the check passed */
+  passed: boolean;
+
+  /** Details about the check result */
+  message: string;
+}
+
+/**
+ * Result of a health check operation.
+ *
+ * Provides detailed status of Notes.app accessibility and functionality.
+ *
+ * @example
+ * ```typescript
+ * const result: HealthCheckResult = {
+ *   healthy: true,
+ *   checks: [
+ *     { name: "notes_app", passed: true, message: "Notes.app is accessible" },
+ *     { name: "permissions", passed: true, message: "AppleScript permissions granted" },
+ *     { name: "accounts", passed: true, message: "Found 2 accounts" }
+ *   ]
+ * };
+ * ```
+ */
+export interface HealthCheckResult {
+  /** Whether all checks passed */
+  healthy: boolean;
+
+  /** Individual check results */
+  checks: HealthCheckItem[];
+}

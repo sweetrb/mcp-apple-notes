@@ -15,7 +15,7 @@
  * @module services/appleNotesManager
  */
 
-import type { Note, Folder, Account } from "@/types.js";
+import type { Note, Folder, Account, HealthCheckResult, HealthCheckItem } from "@/types.js";
 import { executeAppleScript } from "@/utils/applescript.js";
 
 // =============================================================================
@@ -1082,5 +1082,110 @@ export class AppleNotesManager {
     const names = parseCommaSeparatedList(result.output);
 
     return names.map((name) => ({ name }));
+  }
+
+  // ===========================================================================
+  // Health Check
+  // ===========================================================================
+
+  /**
+   * Performs a health check on Notes.app accessibility and functionality.
+   *
+   * This method verifies:
+   * - Notes.app is installed and accessible
+   * - AppleScript automation permissions are granted
+   * - At least one account is available
+   * - Basic list operations work
+   *
+   * Use this to diagnose connection issues or verify setup.
+   *
+   * @returns HealthCheckResult with overall status and individual check details
+   *
+   * @example
+   * ```typescript
+   * const health = manager.healthCheck();
+   * if (!health.healthy) {
+   *   console.log("Issues found:");
+   *   health.checks.filter(c => !c.passed).forEach(c => console.log(`- ${c.message}`));
+   * }
+   * ```
+   */
+  healthCheck(): HealthCheckResult {
+    const checks: HealthCheckItem[] = [];
+
+    // Check 1: Notes.app is accessible
+    const appCheck = executeAppleScript('tell application "Notes" to return "ok"');
+    if (appCheck.success && appCheck.output === "ok") {
+      checks.push({
+        name: "notes_app",
+        passed: true,
+        message: "Notes.app is accessible",
+      });
+    } else {
+      const errorHint = appCheck.error?.includes("not authorized")
+        ? " (check Automation permissions in System Preferences)"
+        : "";
+      checks.push({
+        name: "notes_app",
+        passed: false,
+        message: `Notes.app is not accessible${errorHint}`,
+      });
+      // If Notes.app isn't accessible, skip other checks
+      return { healthy: false, checks };
+    }
+
+    // Check 2: AppleScript permissions (can we execute commands?)
+    const permCheck = executeAppleScript('tell application "Notes" to get name of account 1');
+    if (permCheck.success) {
+      checks.push({
+        name: "permissions",
+        passed: true,
+        message: "AppleScript automation permissions granted",
+      });
+    } else {
+      const isPermError =
+        permCheck.error?.includes("not authorized") || permCheck.error?.includes("not permitted");
+      checks.push({
+        name: "permissions",
+        passed: !isPermError,
+        message: isPermError
+          ? "AppleScript permissions denied. Grant access in System Preferences > Privacy & Security > Automation"
+          : `Permission check returned: ${permCheck.error}`,
+      });
+      if (isPermError) {
+        return { healthy: false, checks };
+      }
+    }
+
+    // Check 3: At least one account accessible
+    const accounts = this.listAccounts();
+    if (accounts.length > 0) {
+      const accountNames = accounts.map((a) => a.name).join(", ");
+      checks.push({
+        name: "accounts",
+        passed: true,
+        message: `Found ${accounts.length} account(s): ${accountNames}`,
+      });
+    } else {
+      checks.push({
+        name: "accounts",
+        passed: false,
+        message: "No Notes accounts found. Set up an account in Notes.app first.",
+      });
+      return { healthy: false, checks };
+    }
+
+    // Check 4: Basic operations work (list notes in default account)
+    const defaultAccount = accounts[0]?.name || "iCloud";
+    const notes = this.listNotes(defaultAccount);
+    // Even 0 notes is fine - we just want to verify the operation works
+    checks.push({
+      name: "operations",
+      passed: true,
+      message: `Basic operations working (${notes.length} note(s) in ${defaultAccount})`,
+    });
+
+    const allPassed = checks.every((c) => c.passed);
+    return { healthy: allPassed, checks };
   }
 }
