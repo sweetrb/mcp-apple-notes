@@ -8,14 +8,14 @@
  */
 
 import { execSync } from "child_process";
-import type { AppleScriptResult } from "@/types.js";
+import type { AppleScriptResult, AppleScriptOptions } from "@/types.js";
 
 /**
- * Maximum execution time for AppleScript commands in milliseconds.
- * Apple Notes operations are typically fast, but complex searches
- * or operations on large note collections may take longer.
+ * Default execution timeout for AppleScript commands in milliseconds.
+ * 30 seconds is sufficient for most operations, including complex
+ * searches on large note collections. Can be overridden per-call.
  */
-const EXECUTION_TIMEOUT_MS = 10000;
+const DEFAULT_TIMEOUT_MS = 30000;
 
 /**
  * Escapes a string for safe inclusion in a shell command.
@@ -35,6 +35,24 @@ function escapeForShell(script: string): string {
   // Replace single quotes with: end quote, escaped quote, start quote
   // This is the standard shell escaping pattern for single-quoted strings
   return script.replace(/'/g, "'\\''");
+}
+
+/**
+ * Checks if an error is a timeout error from execSync.
+ *
+ * Node.js throws errors with specific properties when a child process
+ * is killed due to timeout.
+ *
+ * @param error - The caught error object
+ * @returns True if this was a timeout error
+ */
+function isTimeoutError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const execError = error as Error & { killed?: boolean; signal?: string };
+    // execSync kills the process with SIGTERM on timeout
+    return execError.killed === true || execError.signal === "SIGTERM";
+  }
+  return false;
 }
 
 /**
@@ -75,15 +93,20 @@ function parseErrorMessage(errorOutput: string): string {
  * tell blocks and repeat loops).
  *
  * @param script - The AppleScript code to execute
+ * @param options - Optional execution settings (timeout, etc.)
  * @returns A result object with success status and output or error message
  *
  * @example
  * ```typescript
+ * // Basic usage with default timeout (30 seconds)
  * const result = executeAppleScript(`
  *   tell application "Notes"
  *     get name of every note
  *   end tell
  * `);
+ *
+ * // With custom timeout for complex operations
+ * const result = executeAppleScript(complexScript, { timeoutMs: 60000 });
  *
  * if (result.success) {
  *   console.log("Notes:", result.output);
@@ -92,7 +115,11 @@ function parseErrorMessage(errorOutput: string): string {
  * }
  * ```
  */
-export function executeAppleScript(script: string): AppleScriptResult {
+export function executeAppleScript(
+  script: string,
+  options: AppleScriptOptions = {}
+): AppleScriptResult {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   // Validate input - empty scripts are likely programmer errors
   if (!script || !script.trim()) {
     return {
@@ -118,7 +145,7 @@ export function executeAppleScript(script: string): AppleScriptResult {
     // and Apple Notes operations are fast enough that async isn't needed
     const output = execSync(command, {
       encoding: "utf8",
-      timeout: EXECUTION_TIMEOUT_MS,
+      timeout: timeoutMs,
       // Capture stderr separately to get error details
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -130,6 +157,18 @@ export function executeAppleScript(script: string): AppleScriptResult {
   } catch (error: unknown) {
     // execSync throws on non-zero exit codes
     // The error object contains stderr output with AppleScript error details
+
+    // Check for timeout first - provide specific message
+    if (isTimeoutError(error)) {
+      const timeoutSecs = Math.round(timeoutMs / 1000);
+      const errorMessage = `Operation timed out after ${timeoutSecs} seconds. Notes.app may be unresponsive or the operation involves too many notes.`;
+      console.error(`AppleScript timeout: ${errorMessage}`);
+      return {
+        success: false,
+        output: "",
+        error: errorMessage,
+      };
+    }
 
     let errorMessage: string;
 

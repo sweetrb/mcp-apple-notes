@@ -187,6 +187,32 @@ export interface Account {
 // =============================================================================
 
 /**
+ * Options for AppleScript execution.
+ *
+ * Allows customization of execution behavior per operation.
+ *
+ * @example
+ * ```typescript
+ * // Use longer timeout for complex operations
+ * const result = executeAppleScript(script, { timeoutMs: 60000 });
+ * ```
+ */
+export interface AppleScriptOptions {
+  /**
+   * Maximum execution time in milliseconds.
+   *
+   * If the script takes longer than this, execution is aborted
+   * and an error is returned. Defaults to 30000 (30 seconds).
+   *
+   * Recommended values:
+   * - Simple queries (get single note): 10000
+   * - List operations: 30000
+   * - Complex searches on large collections: 60000
+   */
+  timeoutMs?: number;
+}
+
+/**
  * Result from executing an AppleScript command.
  *
  * AppleScript commands are executed via the `osascript` command-line tool.

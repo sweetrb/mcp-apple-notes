@@ -146,13 +146,22 @@ describe("executeAppleScript", () => {
   });
 
   describe("execution options", () => {
-    it("uses correct timeout setting", () => {
+    it("uses default 30 second timeout", () => {
       mockExecSync.mockReturnValue("ok");
 
       executeAppleScript("test");
 
       const options = mockExecSync.mock.calls[0][1] as { timeout: number };
-      expect(options.timeout).toBe(10000); // 10 second timeout
+      expect(options.timeout).toBe(30000); // 30 second default timeout
+    });
+
+    it("allows custom timeout via options", () => {
+      mockExecSync.mockReturnValue("ok");
+
+      executeAppleScript("test", { timeoutMs: 60000 });
+
+      const options = mockExecSync.mock.calls[0][1] as { timeout: number };
+      expect(options.timeout).toBe(60000); // Custom timeout
     });
 
     it("uses UTF-8 encoding for output", () => {
@@ -163,6 +172,45 @@ describe("executeAppleScript", () => {
       expect(result.output).toBe("日本語テスト");
       const options = mockExecSync.mock.calls[0][1] as { encoding: string };
       expect(options.encoding).toBe("utf8");
+    });
+  });
+
+  describe("timeout handling", () => {
+    it("returns specific error message on timeout", () => {
+      // Simulate a timeout error (Node.js sets killed=true and signal=SIGTERM)
+      const timeoutError = new Error("Command failed: SIGTERM") as Error & {
+        killed: boolean;
+        signal: string;
+      };
+      timeoutError.killed = true;
+      timeoutError.signal = "SIGTERM";
+
+      mockExecSync.mockImplementation(() => {
+        throw timeoutError;
+      });
+
+      const result = executeAppleScript("test");
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("timed out after 30 seconds");
+      expect(result.error).toContain("Notes.app may be unresponsive");
+    });
+
+    it("includes custom timeout value in error message", () => {
+      const timeoutError = new Error("Command failed: SIGTERM") as Error & {
+        killed: boolean;
+        signal: string;
+      };
+      timeoutError.killed = true;
+      timeoutError.signal = "SIGTERM";
+
+      mockExecSync.mockImplementation(() => {
+        throw timeoutError;
+      });
+
+      const result = executeAppleScript("test", { timeoutMs: 60000 });
+
+      expect(result.error).toContain("timed out after 60 seconds");
     });
   });
 });
