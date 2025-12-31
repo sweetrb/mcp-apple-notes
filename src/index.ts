@@ -189,9 +189,19 @@ server.tool(
   withErrorHandling(({ id, title, account }) => {
     // Prefer ID-based lookup if provided
     if (id) {
+      // Check for password protection first for better error message
+      const note = notesManager.getNoteById(id);
+      if (!note) {
+        return errorResponse(`Note with ID "${id}" not found`);
+      }
+      if (note.passwordProtected) {
+        return errorResponse(
+          `Note "${note.title}" is password-protected and cannot be read. Unlock it in Notes.app first.`
+        );
+      }
       const content = notesManager.getNoteContentById(id);
       if (!content) {
-        return errorResponse(`Note with ID "${id}" not found`);
+        return errorResponse(`Failed to read content of note "${note.title}"`);
       }
       return successResponse(content);
     }
@@ -201,9 +211,20 @@ server.tool(
       return errorResponse("Either 'id' or 'title' is required");
     }
 
+    // Check for password protection first for better error message
+    const note = notesManager.getNoteDetails(title, account);
+    if (!note) {
+      return errorResponse(`Note "${title}" not found`);
+    }
+    if (note.passwordProtected) {
+      return errorResponse(
+        `Note "${title}" is password-protected and cannot be read. Unlock it in Notes.app first.`
+      );
+    }
+
     const content = notesManager.getNoteContent(title, account);
     if (!content) {
-      return errorResponse(`Note "${title}" not found`);
+      return errorResponse(`Failed to read content of note "${title}"`);
     }
 
     return successResponse(content);
@@ -282,11 +303,21 @@ server.tool(
   withErrorHandling(({ id, title, newTitle, newContent, account }) => {
     // Prefer ID-based update if provided
     if (id) {
+      // Check for password protection first for better error message
+      const note = notesManager.getNoteById(id);
+      if (!note) {
+        return errorResponse(`Note with ID "${id}" not found`);
+      }
+      if (note.passwordProtected) {
+        return errorResponse(
+          `Note "${note.title}" is password-protected and cannot be updated. Unlock it in Notes.app first.`
+        );
+      }
       const success = notesManager.updateNoteById(id, newTitle, newContent);
       if (!success) {
-        return errorResponse(`Failed to update note with ID "${id}". Note may not exist.`);
+        return errorResponse(`Failed to update note "${note.title}"`);
       }
-      const displayTitle = newTitle || "(title preserved)";
+      const displayTitle = newTitle || note.title;
       return successResponse(`Note updated: "${displayTitle}"`);
     }
 
@@ -295,9 +326,20 @@ server.tool(
       return errorResponse("Either 'id' or 'title' is required");
     }
 
+    // Check for password protection first for better error message
+    const note = notesManager.getNoteDetails(title, account);
+    if (!note) {
+      return errorResponse(`Note "${title}" not found`);
+    }
+    if (note.passwordProtected) {
+      return errorResponse(
+        `Note "${title}" is password-protected and cannot be updated. Unlock it in Notes.app first.`
+      );
+    }
+
     const success = notesManager.updateNote(title, newTitle, newContent, account);
     if (!success) {
-      return errorResponse(`Failed to update note "${title}". Note may not exist.`);
+      return errorResponse(`Failed to update note "${title}"`);
     }
 
     const finalTitle = newTitle || title;

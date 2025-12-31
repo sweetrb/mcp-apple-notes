@@ -437,6 +437,86 @@ describe("AppleNotesManager", () => {
   });
 
   // ---------------------------------------------------------------------------
+  // Password Protection Helpers
+  // ---------------------------------------------------------------------------
+
+  describe("isNotePasswordProtected", () => {
+    it("returns true when note is password-protected", () => {
+      mockExecuteAppleScript.mockReturnValue({
+        success: true,
+        output:
+          "Locked Note, x-coredata://ABC/ICNote/p1, date Monday, January 1, 2024 at 12:00:00 PM, date Monday, January 1, 2024 at 12:00:00 PM, false, true",
+      });
+
+      const result = manager.isNotePasswordProtected("Locked Note");
+
+      expect(result).toBe(true);
+    });
+
+    it("returns false when note is not password-protected", () => {
+      mockExecuteAppleScript.mockReturnValue({
+        success: true,
+        output:
+          "Open Note, x-coredata://ABC/ICNote/p2, date Monday, January 1, 2024 at 12:00:00 PM, date Monday, January 1, 2024 at 12:00:00 PM, false, false",
+      });
+
+      const result = manager.isNotePasswordProtected("Open Note");
+
+      expect(result).toBe(false);
+    });
+
+    it("returns false when note is not found", () => {
+      mockExecuteAppleScript.mockReturnValue({
+        success: false,
+        output: "",
+        error: "Note not found",
+      });
+
+      const result = manager.isNotePasswordProtected("Missing Note");
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe("isNotePasswordProtectedById", () => {
+    it("returns true when note is password-protected", () => {
+      mockExecuteAppleScript.mockReturnValue({
+        success: true,
+        output:
+          "Locked Note, x-coredata://ABC/ICNote/p1, date Monday, January 1, 2024 at 12:00:00 PM, date Monday, January 1, 2024 at 12:00:00 PM, false, true",
+      });
+
+      const result = manager.isNotePasswordProtectedById("x-coredata://ABC/ICNote/p1");
+
+      expect(result).toBe(true);
+    });
+
+    it("returns false when note is not password-protected", () => {
+      mockExecuteAppleScript.mockReturnValue({
+        success: true,
+        output:
+          "Open Note, x-coredata://ABC/ICNote/p2, date Monday, January 1, 2024 at 12:00:00 PM, date Monday, January 1, 2024 at 12:00:00 PM, false, false",
+      });
+
+      const result = manager.isNotePasswordProtectedById("x-coredata://ABC/ICNote/p2");
+
+      expect(result).toBe(false);
+    });
+
+    it("returns false when note is not found", () => {
+      mockExecuteAppleScript.mockReturnValue({
+        success: false,
+        output: "",
+        error: "Note not found",
+      });
+
+      const result = manager.isNotePasswordProtectedById("x-coredata://invalid");
+
+      expect(result).toBe(false);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Get Note By ID
   // ---------------------------------------------------------------------------
 

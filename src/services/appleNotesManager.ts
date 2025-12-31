@@ -262,6 +262,33 @@ export class AppleNotesManager {
     return account || this.defaultAccount;
   }
 
+  /**
+   * Checks if a note is password-protected by its ID.
+   *
+   * Password-protected notes cannot have their content read or modified
+   * via AppleScript when locked. This method allows checking before
+   * attempting operations that would fail.
+   *
+   * @param id - CoreData URL identifier for the note
+   * @returns true if the note is password-protected, false otherwise
+   */
+  isNotePasswordProtectedById(id: string): boolean {
+    const note = this.getNoteById(id);
+    return note?.passwordProtected === true;
+  }
+
+  /**
+   * Checks if a note is password-protected by its title.
+   *
+   * @param title - Exact title of the note
+   * @param account - Account to search in (defaults to iCloud)
+   * @returns true if the note is password-protected, false otherwise
+   */
+  isNotePasswordProtected(title: string, account?: string): boolean {
+    const note = this.getNoteDetails(title, account);
+    return note?.passwordProtected === true;
+  }
+
   // ===========================================================================
   // Note Operations
   // ===========================================================================
@@ -441,6 +468,10 @@ export class AppleNotesManager {
   /**
    * Retrieves the HTML content of a note by its title.
    *
+   * Note: Password-protected notes will fail with an AppleScript error.
+   * Callers should check for password protection beforehand using
+   * getNoteDetails() or isNotePasswordProtected().
+   *
    * @param title - Exact title of the note
    * @param account - Account to search in (defaults to iCloud)
    * @returns HTML content of the note, or empty string if not found
@@ -475,6 +506,10 @@ export class AppleNotesManager {
    *
    * This is more reliable than getNoteContent() because IDs are unique
    * across all accounts, while titles can be duplicated.
+   *
+   * Note: Password-protected notes will fail with an AppleScript error.
+   * Callers should check for password protection beforehand using
+   * getNoteById() or isNotePasswordProtectedById().
    *
    * @param id - CoreData URL identifier for the note
    * @returns HTML content of the note, or empty string if not found
@@ -598,7 +633,9 @@ export class AppleNotesManager {
     const output = result.output;
 
     // Extract dates using regex (they have a recognizable format)
-    const dateMatches = output.match(/date [^,]+/g) || [];
+    // Pattern matches: "date Saturday, December 27, 2025 at 3:44:02 PM"
+    const dateMatches =
+      output.match(/date [A-Z][^,]*(?:, [A-Z][^,]*)* at \d+:\d+:\d+ [AP]M/g) || [];
 
     // Extract title and ID from the beginning
     const firstComma = output.indexOf(",");
@@ -607,6 +644,13 @@ export class AppleNotesManager {
     const secondComma = afterTitle.indexOf(",");
     const extractedId = afterTitle.substring(0, secondComma).trim();
 
+    // Extract boolean values from the end (shared, passwordProtected)
+    // They appear as ", true" or ", false" at the end
+    const boolPattern = /, (true|false), (true|false)$/;
+    const boolMatch = output.match(boolPattern);
+    const shared = boolMatch ? boolMatch[1] === "true" : false;
+    const passwordProtected = boolMatch ? boolMatch[2] === "true" : false;
+
     return {
       id: extractedId,
       title: extractedTitle,
@@ -614,8 +658,8 @@ export class AppleNotesManager {
       tags: [],
       created: dateMatches[0] ? parseAppleScriptDate(dateMatches[0]) : new Date(),
       modified: dateMatches[1] ? parseAppleScriptDate(dateMatches[1]) : new Date(),
-      shared: output.includes("true"),
-      passwordProtected: false, // Difficult to parse reliably
+      shared,
+      passwordProtected,
       account: targetAccount,
     };
   }
@@ -675,6 +719,10 @@ export class AppleNotesManager {
    * so updating content also allows title changes. If newTitle is
    * not provided, the original title is preserved.
    *
+   * Note: Password-protected notes will fail with an AppleScript error.
+   * Callers should check for password protection beforehand using
+   * getNoteDetails() or isNotePasswordProtected().
+   *
    * @param title - Current title of the note to update
    * @param newTitle - New title (optional, keeps existing if not provided)
    * @param newContent - New content for the note body
@@ -716,13 +764,17 @@ export class AppleNotesManager {
    * This is more reliable than updateNote() because IDs are unique,
    * while titles can be duplicated.
    *
+   * Note: Password-protected notes will fail with an AppleScript error.
+   * Callers should check for password protection beforehand using
+   * getNoteById() or isNotePasswordProtectedById().
+   *
    * @param id - CoreData URL identifier for the note
    * @param newTitle - New title (optional, keeps existing if not provided)
    * @param newContent - New content for the note body
    * @returns true if update succeeded, false otherwise
    */
   updateNoteById(id: string, newTitle: string | undefined, newContent: string): boolean {
-    // First get the current title if newTitle is not provided
+    // Get the note to retrieve current title if newTitle not provided
     let effectiveTitle = newTitle;
     if (!effectiveTitle) {
       const note = this.getNoteById(id);
