@@ -761,6 +761,44 @@ server.tool(
   }, "Error exporting notes")
 );
 
+// --- get-note-markdown ---
+
+server.tool(
+  "get-note-markdown",
+  {
+    id: z.string().optional().describe("Note ID (preferred - more reliable than title)"),
+    title: z.string().optional().describe("Note title (use id instead when available)"),
+    account: z
+      .string()
+      .optional()
+      .describe("Account containing the note (ignored if id is provided)"),
+  },
+  withErrorHandling(({ id, title, account }) => {
+    // Prefer ID-based lookup if provided
+    if (id) {
+      const markdown = notesManager.getNoteMarkdownById(id);
+      if (!markdown) {
+        return errorResponse(`Note with ID "${id}" not found or has no content`);
+      }
+      return successResponse(markdown);
+    }
+
+    // Fall back to title-based lookup
+    if (!title) {
+      return errorResponse("Either 'id' or 'title' is required");
+    }
+
+    const markdown = notesManager.getNoteMarkdown(title, account);
+    if (!markdown) {
+      return errorResponse(
+        `Note "${title}" not found or has no content. Use search-notes to find notes, then use the note's ID for reliable operations.`
+      );
+    }
+
+    return successResponse(markdown);
+  }, "Error getting note as markdown")
+);
+
 // =============================================================================
 // Server Startup
 // =============================================================================

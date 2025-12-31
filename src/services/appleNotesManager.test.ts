@@ -1513,4 +1513,74 @@ describe("AppleNotesManager", () => {
       expect(result.summary.totalNotes).toBe(0);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Markdown Conversion
+  // ---------------------------------------------------------------------------
+
+  describe("getNoteMarkdown", () => {
+    it("converts HTML to Markdown", () => {
+      mockExecuteAppleScript.mockReturnValueOnce({
+        success: true,
+        output: "<div>My Title</div><div>This is a paragraph.</div><div><b>Bold text</b></div>",
+      });
+
+      const markdown = manager.getNoteMarkdown("My Note");
+
+      expect(markdown).toContain("My Title");
+      expect(markdown).toContain("This is a paragraph.");
+      expect(markdown).toContain("**Bold text**");
+    });
+
+    it("returns empty string when note not found", () => {
+      mockExecuteAppleScript.mockReturnValueOnce({
+        success: false,
+        output: "",
+        error: "Note not found",
+      });
+
+      const markdown = manager.getNoteMarkdown("Missing Note");
+
+      expect(markdown).toBe("");
+    });
+
+    it("handles lists correctly", () => {
+      mockExecuteAppleScript.mockReturnValueOnce({
+        success: true,
+        output: "<ul><li>Item 1</li><li>Item 2</li></ul>",
+      });
+
+      const markdown = manager.getNoteMarkdown("List Note");
+
+      // Turndown may add extra whitespace after the bullet
+      expect(markdown).toMatch(/-\s+Item 1/);
+      expect(markdown).toMatch(/-\s+Item 2/);
+    });
+  });
+
+  describe("getNoteMarkdownById", () => {
+    it("converts HTML to Markdown using ID", () => {
+      mockExecuteAppleScript.mockReturnValueOnce({
+        success: true,
+        output: "<div>Note Title</div><div>Content here</div>",
+      });
+
+      const markdown = manager.getNoteMarkdownById("x-coredata://ABC/ICNote/p123");
+
+      expect(markdown).toContain("Note Title");
+      expect(markdown).toContain("Content here");
+    });
+
+    it("returns empty string when note ID not found", () => {
+      mockExecuteAppleScript.mockReturnValueOnce({
+        success: false,
+        output: "",
+        error: "Note not found",
+      });
+
+      const markdown = manager.getNoteMarkdownById("x-coredata://invalid");
+
+      expect(markdown).toBe("");
+    });
+  });
 });

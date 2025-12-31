@@ -27,6 +27,7 @@ import type {
   Attachment,
 } from "@/types.js";
 import { executeAppleScript } from "@/utils/applescript.js";
+import TurndownService from "turndown";
 
 // =============================================================================
 // Text Processing Utilities
@@ -1671,5 +1672,83 @@ export class AppleNotesManager {
     }
 
     return exportData;
+  }
+
+  // ===========================================================================
+  // Markdown Conversion
+  // ===========================================================================
+
+  /**
+   * Turndown service instance for HTML to Markdown conversion.
+   * Configured for Apple Notes HTML quirks.
+   * Initialized lazily on first use.
+   */
+  private turndownService!: TurndownService;
+
+  /**
+   * Initialize the Turndown service with Apple Notes-specific rules.
+   */
+  private initTurndownService(): void {
+    if (this.turndownService) return;
+
+    this.turndownService = new TurndownService({
+      headingStyle: "atx",
+      codeBlockStyle: "fenced",
+      bulletListMarker: "-",
+    });
+
+    // Handle Apple Notes-specific HTML patterns
+    // Notes.app uses <div> instead of <p> for paragraphs
+    this.turndownService.addRule("notesDivs", {
+      filter: "div",
+      replacement: (content: string) => {
+        return content + "\n";
+      },
+    });
+  }
+
+  /**
+   * Converts HTML content to Markdown.
+   *
+   * @param html - HTML content from Notes.app
+   * @returns Markdown formatted content
+   */
+  private htmlToMarkdown(html: string): string {
+    this.initTurndownService();
+    return this.turndownService.turndown(html).trim();
+  }
+
+  /**
+   * Gets note content as Markdown by title.
+   *
+   * @param title - Exact title of the note
+   * @param account - Account containing the note (defaults to iCloud)
+   * @returns Markdown content, or empty string if not found
+   *
+   * @example
+   * ```typescript
+   * const md = manager.getNoteMarkdown("Shopping List");
+   * console.log(md); // "# Shopping List\n\n- Eggs\n- Milk"
+   * ```
+   */
+  getNoteMarkdown(title: string, account?: string): string {
+    const html = this.getNoteContent(title, account);
+    if (!html) return "";
+    return this.htmlToMarkdown(html);
+  }
+
+  /**
+   * Gets note content as Markdown by ID.
+   *
+   * This is more reliable than getNoteMarkdown() because IDs are unique
+   * across all accounts, while titles can be duplicated.
+   *
+   * @param id - CoreData URL identifier for the note
+   * @returns Markdown content, or empty string if not found
+   */
+  getNoteMarkdownById(id: string): string {
+    const html = this.getNoteContentById(id);
+    if (!html) return "";
+    return this.htmlToMarkdown(html);
   }
 }

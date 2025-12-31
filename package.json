@@ -1,6 +1,6 @@
 {
   "name": "apple-notes-mcp",
-  "version": "1.2.13",
+  "version": "1.2.14",
   "description": "MCP server for Apple Notes - create, search, update, and manage notes via Claude",
   "type": "module",
   "main": "build/index.js",
@@ -54,10 +54,12 @@
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.4.1",
+    "turndown": "^7.2.2",
     "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@types/turndown": "^5.0.6",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "eslint": "^9.0.0",
