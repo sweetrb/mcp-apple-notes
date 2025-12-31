@@ -672,6 +672,69 @@ server.tool(
   }, "Error listing attachments")
 );
 
+// --- batch-delete-notes ---
+
+server.tool(
+  "batch-delete-notes",
+  {
+    ids: z.array(z.string()).describe("Array of note IDs to delete"),
+  },
+  withErrorHandling(({ ids }) => {
+    if (ids.length === 0) {
+      return errorResponse("No note IDs provided");
+    }
+
+    const results = notesManager.batchDeleteNotes(ids);
+    const succeeded = results.filter((r) => r.success).length;
+    const failed = results.filter((r) => !r.success).length;
+
+    const lines: string[] = [`Batch delete: ${succeeded} succeeded, ${failed} failed`];
+
+    if (failed > 0) {
+      lines.push("\nFailures:");
+      for (const result of results.filter((r) => !r.success)) {
+        lines.push(`  - ${result.id}: ${result.error}`);
+      }
+    }
+
+    return succeeded > 0 ? successResponse(lines.join("\n")) : errorResponse(lines.join("\n"));
+  }, "Error performing batch delete")
+);
+
+// --- batch-move-notes ---
+
+server.tool(
+  "batch-move-notes",
+  {
+    ids: z.array(z.string()).describe("Array of note IDs to move"),
+    folder: z.string().describe("Destination folder name"),
+    account: z
+      .string()
+      .optional()
+      .describe("Account containing the destination folder (defaults to iCloud)"),
+  },
+  withErrorHandling(({ ids, folder, account }) => {
+    if (ids.length === 0) {
+      return errorResponse("No note IDs provided");
+    }
+
+    const results = notesManager.batchMoveNotes(ids, folder, account);
+    const succeeded = results.filter((r) => r.success).length;
+    const failed = results.filter((r) => !r.success).length;
+
+    const lines: string[] = [`Batch move to "${folder}": ${succeeded} succeeded, ${failed} failed`];
+
+    if (failed > 0) {
+      lines.push("\nFailures:");
+      for (const result of results.filter((r) => !r.success)) {
+        lines.push(`  - ${result.id}: ${result.error}`);
+      }
+    }
+
+    return succeeded > 0 ? successResponse(lines.join("\n")) : errorResponse(lines.join("\n"));
+  }, "Error performing batch move")
+);
+
 // =============================================================================
 // Server Startup
 // =============================================================================

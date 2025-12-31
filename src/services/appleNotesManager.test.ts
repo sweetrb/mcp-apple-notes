@@ -1283,4 +1283,154 @@ describe("AppleNotesManager", () => {
       expect(attachments).toEqual([]);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Batch Operations
+  // ---------------------------------------------------------------------------
+
+  describe("batchDeleteNotes", () => {
+    // Helper to create getNoteById mock output (matches AppleScript format)
+    const noteByIdOutput = (title: string, passwordProtected = false) =>
+      `${title}, x-coredata://ABC/ICNote/p1, date Sunday, January 1, 2025 at 1:00:00 PM, date Sunday, January 1, 2025 at 1:00:00 PM, false, ${passwordProtected}`;
+
+    it("deletes multiple notes successfully", () => {
+      // For each note: getNoteById (which isNotePasswordProtectedById also calls), deleteNoteById
+      mockExecuteAppleScript
+        // First note: getNoteById for existence check
+        .mockReturnValueOnce({ success: true, output: noteByIdOutput("Note 1", false) })
+        // First note: getNoteById for password check (isNotePasswordProtectedById calls getNoteById)
+        .mockReturnValueOnce({ success: true, output: noteByIdOutput("Note 1", false) })
+        // First note: deleteNoteById
+        .mockReturnValueOnce({ success: true, output: "" })
+        // Second note: getNoteById for existence check
+        .mockReturnValueOnce({ success: true, output: noteByIdOutput("Note 2", false) })
+        // Second note: getNoteById for password check
+        .mockReturnValueOnce({ success: true, output: noteByIdOutput("Note 2", false) })
+        // Second note: deleteNoteById
+        .mockReturnValueOnce({ success: true, output: "" });
+
+      const results = manager.batchDeleteNotes(["id1", "id2"]);
+
+      expect(results).toHaveLength(2);
+      expect(results[0]).toEqual({ id: "id1", success: true });
+      expect(results[1]).toEqual({ id: "id2", success: true });
+    });
+
+    it("returns error for non-existent note", () => {
+      mockExecuteAppleScript.mockReturnValueOnce({
+        success: false,
+        output: "",
+        error: "Not found",
+      });
+
+      const results = manager.batchDeleteNotes(["nonexistent"]);
+
+      expect(results[0]).toEqual({
+        id: "nonexistent",
+        success: false,
+        error: "Note not found",
+      });
+    });
+
+    it("returns error for password-protected note", () => {
+      mockExecuteAppleScript
+        // getNoteById for existence check
+        .mockReturnValueOnce({ success: true, output: noteByIdOutput("Locked Note", true) })
+        // getNoteById for password check (returns true for passwordProtected)
+        .mockReturnValueOnce({ success: true, output: noteByIdOutput("Locked Note", true) });
+
+      const results = manager.batchDeleteNotes(["id1"]);
+
+      expect(results[0]).toEqual({
+        id: "id1",
+        success: false,
+        error: "Note is password-protected",
+      });
+    });
+
+    it("handles mixed success and failure", () => {
+      mockExecuteAppleScript
+        // First note: success
+        .mockReturnValueOnce({ success: true, output: noteByIdOutput("Note 1", false) })
+        .mockReturnValueOnce({ success: true, output: noteByIdOutput("Note 1", false) })
+        .mockReturnValueOnce({ success: true, output: "" })
+        // Second note: not found
+        .mockReturnValueOnce({ success: false, output: "", error: "Not found" });
+
+      const results = manager.batchDeleteNotes(["id1", "id2"]);
+
+      expect(results[0]).toEqual({ id: "id1", success: true });
+      expect(results[1]).toEqual({ id: "id2", success: false, error: "Note not found" });
+    });
+  });
+
+  describe("batchMoveNotes", () => {
+    // Helper to create getNoteById mock output (matches AppleScript format)
+    const noteByIdOutput = (title: string, passwordProtected = false) =>
+      `${title}, x-coredata://ABC/ICNote/p1, date Sunday, January 1, 2025 at 1:00:00 PM, date Sunday, January 1, 2025 at 1:00:00 PM, false, ${passwordProtected}`;
+
+    it("moves multiple notes successfully", () => {
+      // For each note: getNoteById, getNoteById (password check), getNoteContentById, create, delete
+      mockExecuteAppleScript
+        // First note: getNoteById for existence check
+        .mockReturnValueOnce({ success: true, output: noteByIdOutput("Note 1", false) })
+        // First note: getNoteById for password check
+        .mockReturnValueOnce({ success: true, output: noteByIdOutput("Note 1", false) })
+        // First note: moveNoteById calls getNoteContentById
+        .mockReturnValueOnce({ success: true, output: "<div>Note 1</div><div>Content</div>" })
+        // First note: createNote in destination
+        .mockReturnValueOnce({ success: true, output: "" })
+        // First note: deleteNoteById (original)
+        .mockReturnValueOnce({ success: true, output: "" })
+        // Second note: getNoteById for existence check
+        .mockReturnValueOnce({ success: true, output: noteByIdOutput("Note 2", false) })
+        // Second note: getNoteById for password check
+        .mockReturnValueOnce({ success: true, output: noteByIdOutput("Note 2", false) })
+        // Second note: moveNoteById calls getNoteContentById
+        .mockReturnValueOnce({ success: true, output: "<div>Note 2</div><div>Content</div>" })
+        // Second note: createNote in destination
+        .mockReturnValueOnce({ success: true, output: "" })
+        // Second note: deleteNoteById (original)
+        .mockReturnValueOnce({ success: true, output: "" });
+
+      const results = manager.batchMoveNotes(["id1", "id2"], "Archive");
+
+      expect(results).toHaveLength(2);
+      expect(results[0]).toEqual({ id: "id1", success: true });
+      expect(results[1]).toEqual({ id: "id2", success: true });
+    });
+
+    it("returns error for non-existent note", () => {
+      // getNoteById fails for existence check
+      mockExecuteAppleScript.mockReturnValueOnce({
+        success: false,
+        output: "",
+        error: "Not found",
+      });
+
+      const results = manager.batchMoveNotes(["nonexistent"], "Archive");
+
+      expect(results[0]).toEqual({
+        id: "nonexistent",
+        success: false,
+        error: "Note not found",
+      });
+    });
+
+    it("returns error for password-protected note", () => {
+      mockExecuteAppleScript
+        // getNoteById for existence check
+        .mockReturnValueOnce({ success: true, output: noteByIdOutput("Locked Note", true) })
+        // getNoteById for password check (returns true for passwordProtected)
+        .mockReturnValueOnce({ success: true, output: noteByIdOutput("Locked Note", true) });
+
+      const results = manager.batchMoveNotes(["id1"], "Archive");
+
+      expect(results[0]).toEqual({
+        id: "id1",
+        success: false,
+        error: "Note is password-protected",
+      });
+    });
+  });
 });

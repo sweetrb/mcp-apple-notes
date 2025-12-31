@@ -1437,4 +1437,119 @@ export class AppleNotesManager {
 
     return attachments;
   }
+
+  // ===========================================================================
+  // Batch Operations
+  // ===========================================================================
+
+  /**
+   * Result of a batch operation on a single item.
+   */
+  private createBatchResult(
+    id: string,
+    success: boolean,
+    error?: string
+  ): { id: string; success: boolean; error?: string } {
+    return error ? { id, success, error } : { id, success };
+  }
+
+  /**
+   * Deletes multiple notes by their IDs.
+   *
+   * Each deletion is attempted independently; failures don't stop other deletions.
+   * Returns results for each note indicating success or failure.
+   *
+   * @param ids - Array of CoreData URL identifiers for notes to delete
+   * @returns Array of results with id, success status, and optional error message
+   *
+   * @example
+   * ```typescript
+   * const results = manager.batchDeleteNotes([
+   *   "x-coredata://ABC/ICNote/p1",
+   *   "x-coredata://ABC/ICNote/p2"
+   * ]);
+   * results.forEach(r => {
+   *   if (r.success) console.log(`Deleted ${r.id}`);
+   *   else console.log(`Failed to delete ${r.id}: ${r.error}`);
+   * });
+   * ```
+   */
+  batchDeleteNotes(ids: string[]): { id: string; success: boolean; error?: string }[] {
+    const results: { id: string; success: boolean; error?: string }[] = [];
+
+    for (const id of ids) {
+      // First verify the note exists and isn't password protected
+      const note = this.getNoteById(id);
+      if (!note) {
+        results.push(this.createBatchResult(id, false, "Note not found"));
+        continue;
+      }
+
+      if (this.isNotePasswordProtectedById(id)) {
+        results.push(this.createBatchResult(id, false, "Note is password-protected"));
+        continue;
+      }
+
+      // Attempt deletion
+      const success = this.deleteNoteById(id);
+      if (success) {
+        results.push(this.createBatchResult(id, true));
+      } else {
+        results.push(this.createBatchResult(id, false, "Deletion failed"));
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Moves multiple notes to a folder by their IDs.
+   *
+   * Each move is attempted independently; failures don't stop other moves.
+   * Returns results for each note indicating success or failure.
+   *
+   * @param ids - Array of CoreData URL identifiers for notes to move
+   * @param folder - Destination folder name
+   * @param account - Account containing the folder (defaults to iCloud)
+   * @returns Array of results with id, success status, and optional error message
+   *
+   * @example
+   * ```typescript
+   * const results = manager.batchMoveNotes(
+   *   ["x-coredata://ABC/ICNote/p1", "x-coredata://ABC/ICNote/p2"],
+   *   "Archive"
+   * );
+   * ```
+   */
+  batchMoveNotes(
+    ids: string[],
+    folder: string,
+    account?: string
+  ): { id: string; success: boolean; error?: string }[] {
+    const results: { id: string; success: boolean; error?: string }[] = [];
+
+    for (const id of ids) {
+      // First verify the note exists
+      const note = this.getNoteById(id);
+      if (!note) {
+        results.push(this.createBatchResult(id, false, "Note not found"));
+        continue;
+      }
+
+      if (this.isNotePasswordProtectedById(id)) {
+        results.push(this.createBatchResult(id, false, "Note is password-protected"));
+        continue;
+      }
+
+      // Attempt move using the ID-based method
+      const success = this.moveNoteById(id, folder, account);
+      if (success) {
+        results.push(this.createBatchResult(id, true));
+      } else {
+        results.push(this.createBatchResult(id, false, "Move failed"));
+      }
+    }
+
+    return results;
+  }
 }
