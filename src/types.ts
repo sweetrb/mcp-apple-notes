@@ -460,3 +460,68 @@ export interface HealthCheckResult {
   /** Individual check results */
   checks: HealthCheckItem[];
 }
+
+// =============================================================================
+// Notes Statistics
+// =============================================================================
+
+/**
+ * Statistics for notes per folder.
+ */
+export interface FolderStats {
+  /** Folder name */
+  name: string;
+
+  /** Number of notes in the folder */
+  noteCount: number;
+}
+
+/**
+ * Statistics for notes per account.
+ */
+export interface AccountStats {
+  /** Account name */
+  name: string;
+
+  /** Total number of notes in the account */
+  totalNotes: number;
+
+  /** Number of folders in the account */
+  folderCount: number;
+
+  /** Notes per folder */
+  folders: FolderStats[];
+}
+
+/**
+ * Overall statistics about the Notes database.
+ *
+ * @example
+ * ```typescript
+ * const stats: NotesStats = {
+ *   totalNotes: 150,
+ *   accounts: [
+ *     { name: "iCloud", totalNotes: 120, folderCount: 5, folders: [...] },
+ *     { name: "Gmail", totalNotes: 30, folderCount: 2, folders: [...] }
+ *   ],
+ *   recentlyModified: { last24h: 5, last7d: 20, last30d: 45 }
+ * };
+ * ```
+ */
+export interface NotesStats {
+  /** Total number of notes across all accounts */
+  totalNotes: number;
+
+  /** Statistics per account */
+  accounts: AccountStats[];
+
+  /** Count of recently modified notes */
+  recentlyModified: {
+    /** Notes modified in the last 24 hours */
+    last24h: number;
+    /** Notes modified in the last 7 days */
+    last7d: number;
+    /** Notes modified in the last 30 days */
+    last30d: number;
+  };
+}

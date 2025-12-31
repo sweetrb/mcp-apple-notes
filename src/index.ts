@@ -34,7 +34,7 @@ import { AppleNotesManager } from "@/services/appleNotesManager.js";
  */
 const server = new McpServer({
   name: "apple-notes",
-  version: "1.2.8",
+  version: "1.2.9",
   description: "MCP server for managing Apple Notes - create, search, update, and organize notes",
 });
 
@@ -580,6 +580,43 @@ server.tool(
 
     return successResponse(`${statusIcon} ${statusText}\n\n${checkLines}`);
   }, "Error running health check")
+);
+
+// --- get-notes-stats ---
+
+server.tool(
+  "get-notes-stats",
+  {},
+  withErrorHandling(() => {
+    const stats = notesManager.getNotesStats();
+
+    // Format the output
+    const lines: string[] = [];
+    lines.push(`📊 Notes Statistics`);
+    lines.push(`═══════════════════`);
+    lines.push(`Total notes: ${stats.totalNotes}`);
+    lines.push(``);
+
+    // Per-account breakdown
+    lines.push(`📁 By Account:`);
+    for (const account of stats.accounts) {
+      lines.push(`  ${account.name}: ${account.totalNotes} notes, ${account.folderCount} folders`);
+      for (const folder of account.folders) {
+        if (folder.noteCount > 0) {
+          lines.push(`    - ${folder.name}: ${folder.noteCount}`);
+        }
+      }
+    }
+    lines.push(``);
+
+    // Recently modified
+    lines.push(`📅 Recently Modified:`);
+    lines.push(`  Last 24 hours: ${stats.recentlyModified.last24h}`);
+    lines.push(`  Last 7 days: ${stats.recentlyModified.last7d}`);
+    lines.push(`  Last 30 days: ${stats.recentlyModified.last30d}`);
+
+    return successResponse(lines.join("\n"));
+  }, "Error getting notes statistics")
 );
 
 // =============================================================================

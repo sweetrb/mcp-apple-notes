@@ -15,7 +15,16 @@
  * @module services/appleNotesManager
  */
 
-import type { Note, Folder, Account, HealthCheckResult, HealthCheckItem } from "@/types.js";
+import type {
+  Note,
+  Folder,
+  Account,
+  HealthCheckResult,
+  HealthCheckItem,
+  NotesStats,
+  AccountStats,
+  FolderStats,
+} from "@/types.js";
 import { executeAppleScript } from "@/utils/applescript.js";
 
 // =============================================================================
@@ -1187,5 +1196,121 @@ export class AppleNotesManager {
 
     const allPassed = checks.every((c) => c.passed);
     return { healthy: allPassed, checks };
+  }
+
+  // ===========================================================================
+  // Statistics
+  // ===========================================================================
+
+  /**
+   * Gets comprehensive statistics about notes across all accounts.
+   *
+   * Returns total note counts, per-account breakdowns, folder statistics,
+   * and counts of recently modified notes.
+   *
+   * @returns NotesStats object with comprehensive statistics
+   *
+   * @example
+   * ```typescript
+   * const stats = manager.getNotesStats();
+   * console.log(`Total notes: ${stats.totalNotes}`);
+   * console.log(`Modified today: ${stats.recentlyModified.last24h}`);
+   * ```
+   */
+  getNotesStats(): NotesStats {
+    const accounts = this.listAccounts();
+    const accountStats: AccountStats[] = [];
+    let totalNotes = 0;
+
+    // Collect stats per account
+    for (const account of accounts) {
+      const folders = this.listFolders(account.name);
+      const folderStats: FolderStats[] = [];
+      let accountTotal = 0;
+
+      for (const folder of folders) {
+        const notes = this.listNotes(account.name, folder.name);
+        const noteCount = notes.length;
+        accountTotal += noteCount;
+
+        folderStats.push({
+          name: folder.name,
+          noteCount,
+        });
+      }
+
+      totalNotes += accountTotal;
+      accountStats.push({
+        name: account.name,
+        totalNotes: accountTotal,
+        folderCount: folders.length,
+        folders: folderStats,
+      });
+    }
+
+    // Get recently modified notes counts
+    const recentlyModified = this.getRecentlyModifiedCounts();
+
+    return {
+      totalNotes,
+      accounts: accountStats,
+      recentlyModified,
+    };
+  }
+
+  /**
+   * Helper to get counts of recently modified notes.
+   */
+  private getRecentlyModifiedCounts(): {
+    last24h: number;
+    last7d: number;
+    last30d: number;
+  } {
+    // Get modification dates for all notes across all accounts
+    const script = `
+      tell application "Notes"
+        set modDates to {}
+        repeat with acct in accounts
+          repeat with n in notes of acct
+            set end of modDates to modification date of n
+          end repeat
+        end repeat
+        set output to ""
+        repeat with d in modDates
+          set output to output & (d as string) & "|||"
+        end repeat
+        return output
+      end tell
+    `;
+
+    const result = executeAppleScript(script);
+    if (!result.success || !result.output) {
+      return { last24h: 0, last7d: 0, last30d: 0 };
+    }
+
+    const now = new Date();
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    let last24h = 0;
+    let last7d = 0;
+    let last30d = 0;
+
+    const dateStrings = result.output.split("|||").filter((s) => s.trim());
+    for (const dateStr of dateStrings) {
+      try {
+        const date = new Date(dateStr.trim());
+        if (isNaN(date.getTime())) continue;
+
+        if (date >= oneDayAgo) last24h++;
+        if (date >= sevenDaysAgo) last7d++;
+        if (date >= thirtyDaysAgo) last30d++;
+      } catch {
+        // Skip invalid date strings
+      }
+    }
+
+    return { last24h, last7d, last30d };
   }
 }

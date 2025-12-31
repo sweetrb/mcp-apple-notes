@@ -1112,4 +1112,71 @@ describe("AppleNotesManager", () => {
       expect(accountCheck?.message).toContain("Gmail");
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Statistics
+  // ---------------------------------------------------------------------------
+
+  describe("getNotesStats", () => {
+    it("returns statistics for all accounts and folders", () => {
+      mockExecuteAppleScript
+        // listAccounts
+        .mockReturnValueOnce({ success: true, output: "iCloud" })
+        // listFolders for iCloud
+        .mockReturnValueOnce({ success: true, output: "Notes, Work" })
+        // listNotes for Notes folder
+        .mockReturnValueOnce({ success: true, output: "Note 1, Note 2, Note 3" })
+        // listNotes for Work folder
+        .mockReturnValueOnce({ success: true, output: "Task 1, Task 2" })
+        // getRecentlyModifiedCounts
+        .mockReturnValueOnce({ success: true, output: "" });
+
+      const stats = manager.getNotesStats();
+
+      expect(stats.totalNotes).toBe(5);
+      expect(stats.accounts).toHaveLength(1);
+      expect(stats.accounts[0].name).toBe("iCloud");
+      expect(stats.accounts[0].totalNotes).toBe(5);
+      expect(stats.accounts[0].folderCount).toBe(2);
+      expect(stats.accounts[0].folders).toHaveLength(2);
+    });
+
+    it("returns zero counts when no notes exist", () => {
+      mockExecuteAppleScript
+        .mockReturnValueOnce({ success: true, output: "iCloud" })
+        .mockReturnValueOnce({ success: true, output: "Notes" })
+        .mockReturnValueOnce({ success: true, output: "" })
+        .mockReturnValueOnce({ success: true, output: "" });
+
+      const stats = manager.getNotesStats();
+
+      expect(stats.totalNotes).toBe(0);
+      expect(stats.recentlyModified.last24h).toBe(0);
+      expect(stats.recentlyModified.last7d).toBe(0);
+      expect(stats.recentlyModified.last30d).toBe(0);
+    });
+
+    it("handles multiple accounts", () => {
+      mockExecuteAppleScript
+        // listAccounts
+        .mockReturnValueOnce({ success: true, output: "iCloud, Gmail" })
+        // listFolders for iCloud
+        .mockReturnValueOnce({ success: true, output: "Notes" })
+        // listNotes for iCloud/Notes
+        .mockReturnValueOnce({ success: true, output: "Note 1" })
+        // listFolders for Gmail
+        .mockReturnValueOnce({ success: true, output: "Notes" })
+        // listNotes for Gmail/Notes
+        .mockReturnValueOnce({ success: true, output: "Email Note" })
+        // getRecentlyModifiedCounts
+        .mockReturnValueOnce({ success: true, output: "" });
+
+      const stats = manager.getNotesStats();
+
+      expect(stats.totalNotes).toBe(2);
+      expect(stats.accounts).toHaveLength(2);
+      expect(stats.accounts[0].name).toBe("iCloud");
+      expect(stats.accounts[1].name).toBe("Gmail");
+    });
+  });
 });
