@@ -1433,4 +1433,84 @@ describe("AppleNotesManager", () => {
       });
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Export Operations
+  // ---------------------------------------------------------------------------
+
+  describe("exportNotesAsJson", () => {
+    // Note details output helper - format: title, id, date, date, shared, passwordProtected
+    const noteDetailsOutput = (title: string, passwordProtected = false) =>
+      `${title}, x-coredata://ABC/ICNote/p1, date Sunday, January 1, 2025 at 1:00:00 PM, date Sunday, January 1, 2025 at 1:00:00 PM, false, ${passwordProtected}`;
+
+    it("exports notes with metadata and content", () => {
+      mockExecuteAppleScript
+        // listAccounts
+        .mockReturnValueOnce({ success: true, output: "iCloud" })
+        // listFolders for iCloud
+        .mockReturnValueOnce({ success: true, output: "Notes" })
+        // listNotes for Notes folder
+        .mockReturnValueOnce({ success: true, output: "Test Note" })
+        // getNoteDetails
+        .mockReturnValueOnce({ success: true, output: noteDetailsOutput("Test Note", false) })
+        // getNoteContent
+        .mockReturnValueOnce({
+          success: true,
+          output: "<div>Test Note</div><div>Content here</div>",
+        });
+
+      const result = manager.exportNotesAsJson() as {
+        exportDate: string;
+        version: string;
+        accounts: { name: string; folders: { name: string; notes: object[] }[] }[];
+        summary: { totalNotes: number; totalFolders: number; totalAccounts: number };
+      };
+
+      expect(result.version).toBe("1.0");
+      expect(result.exportDate).toBeDefined();
+      expect(result.summary.totalNotes).toBe(1);
+      expect(result.summary.totalFolders).toBe(1);
+      expect(result.summary.totalAccounts).toBe(1);
+      expect(result.accounts[0].name).toBe("iCloud");
+      expect(result.accounts[0].folders[0].name).toBe("Notes");
+      expect(result.accounts[0].folders[0].notes).toHaveLength(1);
+    });
+
+    it("skips content for password-protected notes", () => {
+      mockExecuteAppleScript
+        // listAccounts
+        .mockReturnValueOnce({ success: true, output: "iCloud" })
+        // listFolders for iCloud
+        .mockReturnValueOnce({ success: true, output: "Notes" })
+        // listNotes for Notes folder
+        .mockReturnValueOnce({ success: true, output: "Locked Note" })
+        // getNoteDetails (passwordProtected = true)
+        .mockReturnValueOnce({ success: true, output: noteDetailsOutput("Locked Note", true) });
+      // No getNoteContent call because note is password-protected
+
+      const result = manager.exportNotesAsJson() as {
+        accounts: { folders: { notes: { content: string; passwordProtected: boolean }[] }[] }[];
+      };
+
+      const note = result.accounts[0].folders[0].notes[0];
+      expect(note.passwordProtected).toBe(true);
+      expect(note.content).toBe("");
+    });
+
+    it("handles empty accounts", () => {
+      mockExecuteAppleScript
+        // listAccounts
+        .mockReturnValueOnce({ success: true, output: "iCloud" })
+        // listFolders for iCloud
+        .mockReturnValueOnce({ success: true, output: "Notes" })
+        // listNotes returns empty
+        .mockReturnValueOnce({ success: true, output: "" });
+
+      const result = manager.exportNotesAsJson() as {
+        summary: { totalNotes: number };
+      };
+
+      expect(result.summary.totalNotes).toBe(0);
+    });
+  });
 });

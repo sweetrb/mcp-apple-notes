@@ -1552,4 +1552,124 @@ export class AppleNotesManager {
 
     return results;
   }
+
+  // ===========================================================================
+  // Export Operations
+  // ===========================================================================
+
+  /**
+   * Export structure for a single note.
+   */
+  private exportNote(note: Note, content: string): object {
+    return {
+      id: note.id,
+      title: note.title,
+      content: content,
+      plaintext: this.htmlToPlaintext(content),
+      folder: note.folder || "Notes",
+      account: note.account || "iCloud",
+      created: note.created.toISOString(),
+      modified: note.modified.toISOString(),
+      shared: note.shared || false,
+      passwordProtected: note.passwordProtected || false,
+    };
+  }
+
+  /**
+   * Simple HTML to plaintext conversion for export.
+   */
+  private htmlToPlaintext(html: string): string {
+    return html
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/div>/gi, "\n")
+      .replace(/<\/p>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#92;/g, "\\")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  /**
+   * Exports all notes as a JSON structure for backup/migration.
+   *
+   * Exports complete note data including:
+   * - Metadata (id, title, dates, flags)
+   * - Content (HTML and plaintext)
+   * - Organization (folder, account)
+   *
+   * Note: Password-protected notes are included with metadata only (no content).
+   *
+   * @returns JSON-serializable export object
+   *
+   * @example
+   * ```typescript
+   * const snapshot = manager.exportNotesAsJson();
+   * fs.writeFileSync('notes-backup.json', JSON.stringify(snapshot, null, 2));
+   * ```
+   */
+  exportNotesAsJson(): object {
+    const accounts = this.listAccounts();
+    const exportData: {
+      exportDate: string;
+      version: string;
+      accounts: object[];
+      summary: { totalNotes: number; totalFolders: number; totalAccounts: number };
+    } = {
+      exportDate: new Date().toISOString(),
+      version: "1.0",
+      accounts: [],
+      summary: { totalNotes: 0, totalFolders: 0, totalAccounts: accounts.length },
+    };
+
+    for (const account of accounts) {
+      const folders = this.listFolders(account.name);
+      const accountData: {
+        name: string;
+        folders: object[];
+      } = {
+        name: account.name,
+        folders: [],
+      };
+
+      for (const folder of folders) {
+        const folderData: {
+          name: string;
+          notes: object[];
+        } = {
+          name: folder.name,
+          notes: [],
+        };
+
+        // Get all note titles in this folder
+        const noteTitles = this.listNotes(account.name, folder.name);
+
+        for (const title of noteTitles) {
+          // Get note details
+          const note = this.getNoteDetails(title, account.name);
+          if (!note) continue;
+
+          // Skip password-protected notes' content but include metadata
+          let content = "";
+          if (!note.passwordProtected) {
+            content = this.getNoteContent(title, account.name);
+          }
+
+          folderData.notes.push(this.exportNote(note, content));
+          exportData.summary.totalNotes++;
+        }
+
+        accountData.folders.push(folderData);
+        exportData.summary.totalFolders++;
+      }
+
+      exportData.accounts.push(accountData);
+    }
+
+    return exportData;
+  }
 }

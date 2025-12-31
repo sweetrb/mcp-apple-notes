@@ -735,6 +735,32 @@ server.tool(
   }, "Error performing batch move")
 );
 
+// --- export-notes-json ---
+
+server.tool(
+  "export-notes-json",
+  {},
+  withErrorHandling(() => {
+    const exportData = notesManager.exportNotesAsJson();
+    const summary = (
+      exportData as { summary: { totalNotes: number; totalFolders: number; totalAccounts: number } }
+    ).summary;
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `Exported ${summary.totalNotes} notes from ${summary.totalFolders} folders across ${summary.totalAccounts} account(s).\n\nFull JSON export:`,
+        },
+        {
+          type: "text" as const,
+          text: JSON.stringify(exportData, null, 2),
+        },
+      ],
+    };
+  }, "Error exporting notes")
+);
+
 // =============================================================================
 // Server Startup
 // =============================================================================
