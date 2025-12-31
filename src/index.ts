@@ -34,7 +34,7 @@ import { AppleNotesManager } from "@/services/appleNotesManager.js";
  */
 const server = new McpServer({
   name: "apple-notes",
-  version: "1.2.0",
+  version: "1.2.5",
   description: "MCP server for managing Apple Notes - create, search, update, and organize notes",
 });
 
@@ -148,13 +148,15 @@ server.tool(
     query: z.string().min(1, "Search query is required"),
     searchContent: z.boolean().optional().describe("Search note content instead of titles"),
     account: z.string().optional().describe("Account to search in"),
+    folder: z.string().optional().describe("Limit search to a specific folder"),
   },
-  withErrorHandling(({ query, searchContent = false, account }) => {
-    const notes = notesManager.searchNotes(query, searchContent, account);
+  withErrorHandling(({ query, searchContent = false, account, folder }) => {
+    const notes = notesManager.searchNotes(query, searchContent, account, folder);
     const searchType = searchContent ? "content" : "titles";
+    const folderInfo = folder ? ` in folder "${folder}"` : "";
 
     if (notes.length === 0) {
-      return successResponse(`No notes found matching "${query}" in ${searchType}`);
+      return successResponse(`No notes found matching "${query}" in ${searchType}${folderInfo}`);
     }
 
     // Format each note with ID and folder info, highlighting Recently Deleted
@@ -170,7 +172,9 @@ server.tool(
       })
       .join("\n");
 
-    return successResponse(`Found ${notes.length} notes (searched ${searchType}):\n${noteList}`);
+    return successResponse(
+      `Found ${notes.length} notes (searched ${searchType}${folderInfo}):\n${noteList}`
+    );
   }, "Error searching notes")
 );
 

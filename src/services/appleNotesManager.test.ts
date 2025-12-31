@@ -392,6 +392,32 @@ describe("AppleNotesManager", () => {
         expect.stringContaining('tell account "Exchange"')
       );
     });
+
+    it("limits search to specified folder", () => {
+      mockExecuteAppleScript.mockReturnValue({
+        success: true,
+        output: "Work Note|||x-coredata://ABC/ICNote/p1|||Work",
+      });
+
+      manager.searchNotes("note", false, undefined, "Work");
+
+      expect(mockExecuteAppleScript).toHaveBeenCalledWith(
+        expect.stringContaining('notes of folder "Work"')
+      );
+    });
+
+    it("combines folder and account filters", () => {
+      mockExecuteAppleScript.mockReturnValue({
+        success: true,
+        output: "",
+      });
+
+      manager.searchNotes("task", false, "Exchange", "Projects");
+
+      const script = mockExecuteAppleScript.mock.calls[0][0];
+      expect(script).toContain('tell account "Exchange"');
+      expect(script).toContain('notes of folder "Projects"');
+    });
   });
 
   // ---------------------------------------------------------------------------

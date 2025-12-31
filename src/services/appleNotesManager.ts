@@ -382,11 +382,12 @@ export class AppleNotesManager {
    * Searches for notes matching a query.
    *
    * By default, searches note titles. Set searchContent=true to search
-   * the body text instead.
+   * the body text instead. Optionally filter to a specific folder.
    *
    * @param query - Text to search for
    * @param searchContent - If true, search note bodies; if false, search titles
    * @param account - Account to search in (defaults to iCloud)
+   * @param folder - Optional folder to limit search to
    * @returns Array of matching notes (with minimal metadata)
    *
    * @example
@@ -396,9 +397,17 @@ export class AppleNotesManager {
    *
    * // Search in note content
    * const projectRefs = manager.searchNotes("Project Alpha", true);
+   *
+   * // Search within a specific folder
+   * const workNotes = manager.searchNotes("deadline", false, "iCloud", "Work");
    * ```
    */
-  searchNotes(query: string, searchContent: boolean = false, account?: string): Note[] {
+  searchNotes(
+    query: string,
+    searchContent: boolean = false,
+    account?: string,
+    folder?: string
+  ): Note[] {
     const targetAccount = this.resolveAccount(account);
     const safeQuery = escapeForAppleScript(query);
 
@@ -408,11 +417,14 @@ export class AppleNotesManager {
       ? `body contains "${safeQuery}"`
       : `name contains "${safeQuery}"`;
 
+    // Build the notes source - either all notes or notes in a specific folder
+    const notesSource = folder ? `notes of folder "${escapeForAppleScript(folder)}"` : "notes";
+
     // Get names, IDs, and folder for each matching note
     // We use a repeat loop to get all properties, separated by a delimiter
     // Note: Some notes may have inaccessible containers, so we wrap in try/on error
     const searchCommand = `
-      set matchingNotes to notes where ${whereClause}
+      set matchingNotes to ${notesSource} where ${whereClause}
       set resultList to {}
       repeat with n in matchingNotes
         try
