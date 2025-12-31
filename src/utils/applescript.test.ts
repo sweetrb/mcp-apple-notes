@@ -94,14 +94,51 @@ describe("executeAppleScript", () => {
       expect(result.error).toBe("Note not found");
     });
 
-    it("handles 'not found' error patterns", () => {
+    it("handles 'not found' error patterns with user-friendly message", () => {
       mockExecSync.mockImplementation(() => {
         throw new Error('Can\'t get note "Missing".');
       });
 
       const result = executeAppleScript('get note "Missing"');
 
-      expect(result.error).toContain("Not found");
+      expect(result.error).toContain("not found");
+      expect(result.error).toContain("Missing");
+      expect(result.error).toContain("case-sensitive"); // Includes helpful hint
+    });
+
+    it("provides helpful message for permission errors", () => {
+      mockExecSync.mockImplementation(() => {
+        throw new Error("execution error: Not authorized to send Apple events (-1743)");
+      });
+
+      const result = executeAppleScript("test");
+
+      expect(result.error).toContain("Permission denied");
+      expect(result.error).toContain("System Preferences");
+    });
+
+    it("provides helpful message for folder not found", () => {
+      mockExecSync.mockImplementation(() => {
+        throw new Error('Can\'t get folder "Work".');
+      });
+
+      const result = executeAppleScript("test");
+
+      expect(result.error).toContain("Work");
+      expect(result.error).toContain("not found");
+      expect(result.error).toContain("list-folders");
+    });
+
+    it("provides helpful message for account not found", () => {
+      mockExecSync.mockImplementation(() => {
+        throw new Error('Can\'t get account "Gmail".');
+      });
+
+      const result = executeAppleScript("test");
+
+      expect(result.error).toContain("Gmail");
+      expect(result.error).toContain("not found");
+      expect(result.error).toContain("list-accounts");
     });
 
     it("handles non-Error exceptions gracefully", () => {

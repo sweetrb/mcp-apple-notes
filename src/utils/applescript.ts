@@ -56,29 +56,109 @@ function isTimeoutError(error: unknown): boolean {
 }
 
 /**
+ * User-friendly error messages mapped from common AppleScript errors.
+ * Each entry maps a pattern (regex or string) to a user-friendly message.
+ */
+const ERROR_MAPPINGS: Array<{ pattern: RegExp; message: string }> = [
+  // Permission errors
+  {
+    pattern: /not authorized|not permitted|access.*denied/i,
+    message:
+      "Permission denied. Grant automation access in System Preferences > Privacy & Security > Automation.",
+  },
+  // Application not running
+  {
+    pattern: /application isn't running|not running/i,
+    message: "Notes.app is not responding. Try opening Notes.app manually.",
+  },
+  // Connection errors
+  {
+    pattern: /connection is invalid|lost connection/i,
+    message: "Lost connection to Notes.app. The app may have crashed or been restarted.",
+  },
+  // Note not found (general)
+  {
+    pattern: /can't get note "([^"]+)"/i,
+    message: 'Note "$1" not found. Verify the title is exact (case-sensitive).',
+  },
+  // Note not found by ID
+  {
+    pattern: /can't get note id/i,
+    message: "Note not found. The note may have been deleted or the ID is invalid.",
+  },
+  // Folder not found
+  {
+    pattern: /can't get folder "([^"]+)"/i,
+    message: 'Folder "$1" not found. Use list-folders to see available folders.',
+  },
+  // Account not found
+  {
+    pattern: /can't get account "([^"]+)"/i,
+    message: 'Account "$1" not found. Use list-accounts to see available accounts.',
+  },
+  // Folder already exists
+  {
+    pattern: /folder.*already exists/i,
+    message: "A folder with that name already exists.",
+  },
+  // Cannot delete (various reasons)
+  {
+    pattern: /can't delete|cannot delete/i,
+    message: "Cannot delete. The item may be locked or in use.",
+  },
+  // Password protected notes
+  {
+    pattern: /password protected|locked note/i,
+    message: "Note is password-protected. Unlock it in Notes.app first.",
+  },
+  // Syntax/script errors (usually programming bugs)
+  {
+    pattern: /syntax error|expected/i,
+    message: "Internal error. Please report this issue.",
+  },
+];
+
+/**
  * Parses error output from osascript to extract meaningful error messages.
  *
  * osascript errors typically include execution error numbers and descriptions.
- * This function attempts to extract the human-readable portion.
+ * This function attempts to extract the human-readable portion and map it
+ * to a user-friendly message with helpful suggestions.
  *
  * @param errorOutput - Raw error string from execSync
- * @returns Cleaned error message
+ * @returns User-friendly error message with suggested action
  */
 function parseErrorMessage(errorOutput: string): string {
-  // Check for common AppleScript error patterns
+  // First, extract the core error message from AppleScript format
+  let coreError = errorOutput;
+
+  // Check for execution error format: "execution error: Message (-1234)"
   const executionError = errorOutput.match(/execution error: (.+?)(?:\s*\(-?\d+\))?$/m);
   if (executionError) {
-    return executionError[1].trim();
+    coreError = executionError[1].trim();
   }
 
-  // Check for "not found" type errors
-  const notFoundError = errorOutput.match(/Can't get (.+?)\./);
+  // Try to match against known error patterns for user-friendly messages
+  for (const { pattern, message } of ERROR_MAPPINGS) {
+    const match = coreError.match(pattern);
+    if (match) {
+      // Replace $1, $2, etc. with captured groups
+      let result = message;
+      for (let i = 1; i < match.length; i++) {
+        result = result.replace(`$${i}`, match[i] || "");
+      }
+      return result;
+    }
+  }
+
+  // Fall back to basic "Can't get X" parsing
+  const notFoundError = coreError.match(/Can't get (.+?)\./);
   if (notFoundError) {
     return `Not found: ${notFoundError[1]}`;
   }
 
   // Return cleaned version of original error
-  return errorOutput.trim() || "Unknown AppleScript error";
+  return coreError.trim() || "Unknown AppleScript error";
 }
 
 /**
