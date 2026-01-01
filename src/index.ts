@@ -348,7 +348,11 @@ server.tool(
         return errorResponse(`Failed to update note "${note.title}"`);
       }
       const displayTitle = newTitle || note.title;
-      return successResponse(`Note updated: "${displayTitle}"`);
+      // Add collaboration warning if note is shared
+      const sharedWarning = note.shared
+        ? "\n\n⚠️ This note is shared with collaborators. Your changes will be visible to them."
+        : "";
+      return successResponse(`Note updated: "${displayTitle}"${sharedWarning}`);
     }
 
     // Fall back to title-based update
@@ -375,7 +379,11 @@ server.tool(
     }
 
     const finalTitle = newTitle || title;
-    return successResponse(`Note updated: "${finalTitle}"`);
+    // Add collaboration warning if note is shared
+    const sharedWarning = note.shared
+      ? "\n\n⚠️ This note is shared with collaborators. Your changes will be visible to them."
+      : "";
+    return successResponse(`Note updated: "${finalTitle}"${sharedWarning}`);
   }, "Error updating note")
 );
 
@@ -403,7 +411,11 @@ server.tool(
       if (!success) {
         return errorResponse(`Failed to delete note "${note.title}"`);
       }
-      return successResponse(`Note deleted: "${note.title}"`);
+      // Add collaboration warning if note was shared
+      const sharedWarning = note.shared
+        ? "\n\n⚠️ This note was shared with collaborators. They will no longer have access."
+        : "";
+      return successResponse(`Note deleted: "${note.title}"${sharedWarning}`);
     }
 
     // Fall back to title-based deletion
@@ -424,7 +436,11 @@ server.tool(
       return errorResponse(`Failed to delete note "${title}"`);
     }
 
-    return successResponse(`Note deleted: "${title}"`);
+    // Add collaboration warning if note was shared
+    const sharedWarning = note.shared
+      ? "\n\n⚠️ This note was shared with collaborators. They will no longer have access."
+      : "";
+    return successResponse(`Note deleted: "${title}"${sharedWarning}`);
   }, "Error deleting note")
 );
 
@@ -612,6 +628,36 @@ server.tool(
     const accountList = accounts.map((a) => `  - ${a.name}`).join("\n");
     return successResponse(`Found ${accounts.length} accounts:\n${accountList}`);
   }, "Error listing accounts")
+);
+
+// =============================================================================
+// Collaboration Tools
+// =============================================================================
+
+// --- list-shared-notes ---
+
+server.tool(
+  "list-shared-notes",
+  {},
+  withErrorHandling(() => {
+    const sharedNotes = notesManager.listSharedNotes();
+
+    if (sharedNotes.length === 0) {
+      return successResponse("No shared notes found. You have no notes shared with collaborators.");
+    }
+
+    const noteList = sharedNotes
+      .map((n) => {
+        const accountInfo = n.account ? ` (${n.account})` : "";
+        return `  - ${n.title}${accountInfo} [id: ${n.id}]`;
+      })
+      .join("\n");
+
+    return successResponse(
+      `Found ${sharedNotes.length} shared note(s):\n${noteList}\n\n` +
+        `⚠️ Changes to shared notes are visible to all collaborators.`
+    );
+  }, "Error listing shared notes")
 );
 
 // =============================================================================

@@ -213,10 +213,12 @@ Based on technical research into Apple Notes internals and analysis of other imp
 - [x] Integrated sync warnings into search-notes, list-notes, list-folders
 - [x] Follow-up verification read to detect sync interference
 
-### 5.3 Collaboration Features
-- Detect shared notes
-- Show collaboration participants (if accessible)
-- Warn before modifying shared notes
+### 5.3 ~~Collaboration Features~~ ✓ Implemented (v1.2.16)
+- [x] Detect shared notes via AppleScript `shared` property
+- [x] Added `list-shared-notes` tool to find all collaborative notes
+- [x] Warnings on update-note when modifying shared notes
+- [x] Warnings on delete-note when removing shared notes
+- Note: Participant names not accessible via AppleScript (only IDs in SQLite)
 
 ---
 
@@ -256,6 +258,7 @@ Based on technical research into Apple Notes internals and analysis of other imp
 13. [x] Markdown export tool (v1.2.14)
 14. [x] JXA Alternative research (v1.2.15) - NOT recommended, 7.6x slower than AppleScript
 15. [x] iCloud Sync Awareness (v1.2.15) - detect sync, warn, verify
+16. [x] Collaboration Features (v1.2.16) - detect shared notes, warn on modify/delete
 
 ---
 

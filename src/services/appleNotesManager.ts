@@ -857,6 +857,86 @@ export class AppleNotesManager {
     return parseCommaSeparatedList(result.output);
   }
 
+  /**
+   * Lists all shared (collaborative) notes across all accounts.
+   *
+   * Returns notes that are shared with other users. These notes require
+   * extra caution when modifying or deleting as changes affect collaborators.
+   *
+   * @returns Array of Note objects for all shared notes
+   *
+   * @example
+   * ```typescript
+   * const shared = manager.listSharedNotes();
+   * console.log(`You have ${shared.length} shared notes`);
+   * ```
+   */
+  listSharedNotes(): Note[] {
+    const sharedNotes: Note[] = [];
+
+    // Query each account for shared notes
+    const accounts = this.listAccounts();
+
+    for (const account of accounts) {
+      const script = buildAccountScopedScript(
+        { account: account.name },
+        `
+        set sharedList to {}
+        repeat with n in notes
+          if shared of n is true then
+            set noteProps to {name of n, id of n, creation date of n, modification date of n, shared of n, password protected of n}
+            set end of sharedList to noteProps
+          end if
+        end repeat
+        return sharedList
+        `
+      );
+
+      const result = executeAppleScript(script);
+
+      if (!result.success) {
+        console.error(`Failed to list shared notes for ${account.name}:`, result.error);
+        continue;
+      }
+
+      // Parse the result - format is: {{name, id, date, date, bool, bool}, {...}, ...}
+      const output = result.output.trim();
+      if (!output || output === "{}" || output === "{}") {
+        continue;
+      }
+
+      // Extract individual note data using regex
+      const notePattern = /\{([^{}]+)\}/g;
+      let match;
+
+      while ((match = notePattern.exec(output)) !== null) {
+        const parts = match[1].split(", ");
+        if (parts.length >= 6) {
+          const title = parts[0].trim();
+          const id = parts[1].trim();
+          const createdStr = parts.slice(2, parts.length - 3).join(", ");
+          const modifiedStr = parts[parts.length - 3];
+          const shared = parts[parts.length - 2] === "true";
+          const passwordProtected = parts[parts.length - 1] === "true";
+
+          sharedNotes.push({
+            id,
+            title,
+            content: "",
+            tags: [],
+            created: parseAppleScriptDate(createdStr),
+            modified: parseAppleScriptDate(modifiedStr),
+            account: account.name,
+            shared,
+            passwordProtected,
+          });
+        }
+      }
+    }
+
+    return sharedNotes;
+  }
+
   // ===========================================================================
   // Folder Operations
   // ===========================================================================
