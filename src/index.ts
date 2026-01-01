@@ -24,6 +24,11 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { AppleNotesManager } from "@/services/appleNotesManager.js";
+import {
+  getSyncStatus,
+  getSyncStatusSummary,
+  withSyncAwarenessSync,
+} from "@/utils/syncDetection.js";
 
 // =============================================================================
 // Server Initialization
@@ -151,12 +156,33 @@ server.tool(
     folder: z.string().optional().describe("Limit search to a specific folder"),
   },
   withErrorHandling(({ query, searchContent = false, account, folder }) => {
-    const notes = notesManager.searchNotes(query, searchContent, account, folder);
+    // Use sync-aware wrapper for this read operation
+    const {
+      result: notes,
+      syncBefore,
+      syncAfter,
+      syncInterference,
+    } = withSyncAwarenessSync("search-notes", () =>
+      notesManager.searchNotes(query, searchContent, account, folder)
+    );
+
     const searchType = searchContent ? "content" : "titles";
     const folderInfo = folder ? ` in folder "${folder}"` : "";
 
+    // Build sync warning if needed
+    const syncWarnings: string[] = [];
+    if (syncBefore.syncDetected) {
+      syncWarnings.push(`⚠️ iCloud sync was active during search.`);
+    }
+    if (syncInterference) {
+      syncWarnings.push(`⚠️ Sync activity detected - results may be incomplete.`);
+    }
+    const syncNote = syncWarnings.length > 0 ? `\n\n${syncWarnings.join(" ")}` : "";
+
     if (notes.length === 0) {
-      return successResponse(`No notes found matching "${query}" in ${searchType}${folderInfo}`);
+      return successResponse(
+        `No notes found matching "${query}" in ${searchType}${folderInfo}${syncNote}`
+      );
     }
 
     // Format each note with ID and folder info, highlighting Recently Deleted
@@ -173,7 +199,7 @@ server.tool(
       .join("\n");
 
     return successResponse(
-      `Found ${notes.length} notes (searched ${searchType}${folderInfo}):\n${noteList}`
+      `Found ${notes.length} notes (searched ${searchType}${folderInfo}):\n${noteList}${syncNote}`
     );
   }, "Error searching notes")
 );
@@ -462,18 +488,35 @@ server.tool(
     folder: z.string().optional().describe("Filter to specific folder"),
   },
   withErrorHandling(({ account, folder }) => {
-    const notes = notesManager.listNotes(account, folder);
+    // Use sync-aware wrapper for this read operation
+    const {
+      result: notes,
+      syncBefore,
+      syncInterference,
+    } = withSyncAwarenessSync("list-notes", () => notesManager.listNotes(account, folder));
 
     // Build context string for the response
     const location = folder ? ` in folder "${folder}"` : "";
     const acct = account ? ` (${account})` : "";
 
+    // Build sync warning if needed
+    const syncWarnings: string[] = [];
+    if (syncBefore.syncDetected) {
+      syncWarnings.push(`⚠️ iCloud sync was active.`);
+    }
+    if (syncInterference) {
+      syncWarnings.push(`Results may be incomplete.`);
+    }
+    const syncNote = syncWarnings.length > 0 ? `\n\n${syncWarnings.join(" ")}` : "";
+
     if (notes.length === 0) {
-      return successResponse(`No notes found${location}${acct}`);
+      return successResponse(`No notes found${location}${acct}${syncNote}`);
     }
 
     const noteList = notes.map((t) => `  - ${t}`).join("\n");
-    return successResponse(`Found ${notes.length} notes${location}${acct}:\n${noteList}`);
+    return successResponse(
+      `Found ${notes.length} notes${location}${acct}:\n${noteList}${syncNote}`
+    );
   }, "Error listing notes")
 );
 
@@ -489,15 +532,30 @@ server.tool(
     account: z.string().optional().describe("Account to list folders from"),
   },
   withErrorHandling(({ account }) => {
-    const folders = notesManager.listFolders(account);
+    // Use sync-aware wrapper for this read operation
+    const {
+      result: folders,
+      syncBefore,
+      syncInterference,
+    } = withSyncAwarenessSync("list-folders", () => notesManager.listFolders(account));
     const acct = account ? ` (${account})` : "";
 
+    // Build sync warning if needed
+    const syncWarnings: string[] = [];
+    if (syncBefore.syncDetected) {
+      syncWarnings.push(`⚠️ iCloud sync was active.`);
+    }
+    if (syncInterference) {
+      syncWarnings.push(`Results may be incomplete.`);
+    }
+    const syncNote = syncWarnings.length > 0 ? `\n\n${syncWarnings.join(" ")}` : "";
+
     if (folders.length === 0) {
-      return successResponse(`No folders found${acct}`);
+      return successResponse(`No folders found${acct}${syncNote}`);
     }
 
     const folderList = folders.map((f) => `  - ${f.name}`).join("\n");
-    return successResponse(`Found ${folders.length} folders${acct}:\n${folderList}`);
+    return successResponse(`Found ${folders.length} folders${acct}:\n${folderList}${syncNote}`);
   }, "Error listing folders")
 );
 
@@ -559,6 +617,41 @@ server.tool(
 // =============================================================================
 // Diagnostics Tools
 // =============================================================================
+
+// --- get-sync-status ---
+
+server.tool(
+  "get-sync-status",
+  {},
+  withErrorHandling(() => {
+    const status = getSyncStatus();
+
+    if (status.error) {
+      return successResponse(`⚠️ Sync status unknown: ${status.error}`);
+    }
+
+    const lines: string[] = [];
+
+    if (status.syncDetected) {
+      lines.push("🔄 iCloud Sync: ACTIVE");
+      lines.push("");
+      if (status.pendingUpload > 0) {
+        lines.push(`  • ${status.pendingUpload} item(s) pending upload`);
+      }
+      if (status.recentActivity) {
+        lines.push(`  • Database modified ${status.secondsSinceLastChange}s ago`);
+      }
+      lines.push("");
+      lines.push("⚠️ Note: Operations may return incomplete results during sync.");
+    } else {
+      lines.push("✓ iCloud Sync: Idle");
+      lines.push("");
+      lines.push(`  Last activity: ${status.secondsSinceLastChange}s ago`);
+    }
+
+    return successResponse(lines.join("\n"));
+  }, "Error checking sync status")
+);
 
 // --- health-check ---
 

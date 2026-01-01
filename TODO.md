@@ -206,10 +206,12 @@ Based on technical research into Apple Notes internals and analysis of other imp
 - Monitor for new Notes.app APIs in future macOS versions
 - Consider Shortcuts integration as potential future path
 
-### 5.2 iCloud Sync Awareness
-- Detect sync-in-progress state
-- Warn when operating on notes that may not be fully synced
-- Consider adding sync status to note details
+### 5.2 ~~iCloud Sync Awareness~~ ✓ Implemented (v1.2.15)
+- [x] Detect sync-in-progress state via NoteStore.sqlite
+- [x] Warn when operating on notes that may not be fully synced
+- [x] Added `get-sync-status` tool to check sync state
+- [x] Integrated sync warnings into search-notes, list-notes, list-folders
+- [x] Follow-up verification read to detect sync interference
 
 ### 5.3 Collaboration Features
 - Detect shared notes
@@ -252,6 +254,7 @@ Based on technical research into Apple Notes internals and analysis of other imp
 11. [x] Batch operations (v1.2.12)
 12. [x] Database snapshot/export (v1.2.13)
 13. [x] Markdown export tool (v1.2.14)
+14. [x] iCloud Sync Awareness (v1.2.15) - detect sync, warn, verify
 
 ---
 
