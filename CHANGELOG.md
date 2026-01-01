@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.17] - 2025-01-01
+
+### Security
+- **Fixed command injection vulnerability** in `moveNote()` - HTML content from notes was not properly escaped before embedding in AppleScript commands
+
+### Changed
+- **Improved sleep implementation** - Replaced CPU-spinning busy-wait with efficient system sleep command
+- **Added sync status caching** - Sync detection now caches results for 2 seconds to reduce database queries
+- **Extracted shared parsing logic** - Consolidated duplicated note property parsing into `parseNotePropertiesOutput()` helper
+
+### Added
+- **New helper functions** for cleaner code:
+  - `escapeHtmlForAppleScript()` - Safely escape already-HTML content for AppleScript
+  - `generateFallbackId()` - Consistent unique ID generation when AppleScript doesn't return one
+  - `parseNotePropertiesOutput()` - Shared parsing for AppleScript note property output
+  - `clearSyncStatusCache()` - Clear cached sync status for testing/forced refresh
+- **Export type definitions** - Added proper TypeScript interfaces for export operations (`NotesExport`, `ExportedNote`, etc.)
+- **Additional retry tests** - Coverage for all retryable error patterns (timed out, lost connection, busy)
+
+### Developer Experience
+- **ESLint flat config** - Migrated from deprecated `.eslintrc.cjs` to modern `eslint.config.js`
+- **Pre-commit hooks** - Added husky + lint-staged for automatic linting on commit
+- **Test coverage thresholds** - Enforced minimum coverage (services ≥80%, utils ≥90%)
+- **Dynamic version** - Server version now read from package.json instead of hardcoded
+
 ## [1.2.16] - 2025-01-01
 
 ### Added

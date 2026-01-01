@@ -635,7 +635,7 @@ If installed from source, use this configuration:
 | Limitation | Reason |
 |------------|--------|
 | macOS only | Apple Notes and AppleScript are macOS-specific |
-| No attachments | AppleScript cannot access note attachments |
+| No attachment content | Attachments can be listed but not downloaded via AppleScript |
 | No pinned notes | Pin status is not exposed via AppleScript |
 | No rich formatting | Content is HTML; complex formatting may not render |
 | Title matching | Most operations require exact title matches |
@@ -694,7 +694,7 @@ The `\\\\` in JSON becomes `\\` in the actual string, which represents a single 
 ```bash
 npm install      # Install dependencies
 npm run build    # Compile TypeScript
-npm test         # Run test suite (206 tests)
+npm test         # Run test suite (217 tests)
 npm run lint     # Check code style
 npm run format   # Format code
 ```

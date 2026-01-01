@@ -7,7 +7,7 @@
  * @module utils/applescript
  */
 
-import { execSync } from "child_process";
+import { execSync, spawnSync } from "child_process";
 import type { AppleScriptResult, AppleScriptOptions } from "@/types.js";
 
 /**
@@ -113,15 +113,28 @@ function isRetryableError(errorMessage: string): boolean {
 }
 
 /**
- * Synchronous sleep using a busy wait.
+ * Synchronous sleep using the system's sleep command.
  * Used between retry attempts for exponential backoff.
+ *
+ * This is more efficient than a busy-wait loop as it doesn't
+ * consume CPU cycles during the delay.
+ *
+ * Uses spawnSync instead of execSync to avoid interference with
+ * execSync mocks in tests.
  *
  * @param ms - Milliseconds to sleep
  */
 function sleep(ms: number): void {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    // Busy wait - necessary for synchronous operation
+  // Use system sleep command with fractional seconds support
+  // This avoids CPU-spinning busy wait while keeping the code synchronous
+  const seconds = ms / 1000;
+  const result = spawnSync("sleep", [seconds.toString()], { stdio: "ignore" });
+  if (result.error) {
+    // Fallback to busy-wait if sleep command fails (shouldn't happen on macOS)
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      // Busy wait fallback
+    }
   }
 }
 

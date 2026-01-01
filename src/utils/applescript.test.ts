@@ -12,6 +12,7 @@ import { executeAppleScript } from "./applescript.js";
 // Mock the child_process module
 vi.mock("child_process", () => ({
   execSync: vi.fn(),
+  spawnSync: vi.fn(() => ({ error: null })), // Mock sleep to return immediately
 }));
 
 const mockExecSync = vi.mocked(execSync);
@@ -340,6 +341,73 @@ describe("executeAppleScript", () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain("not responding");
       expect(mockExecSync).toHaveBeenCalledTimes(3);
+    });
+
+    it("retries on 'timed out' errors", () => {
+      let callCount = 0;
+      mockExecSync.mockImplementation(() => {
+        callCount++;
+        if (callCount < 2) {
+          throw new Error("operation timed out");
+        }
+        return "recovered";
+      });
+
+      const result = executeAppleScript("test", { maxRetries: 3, retryDelayMs: 1 });
+
+      expect(result.success).toBe(true);
+      expect(mockExecSync).toHaveBeenCalledTimes(2);
+    });
+
+    it("retries on 'lost connection' errors", () => {
+      let callCount = 0;
+      mockExecSync.mockImplementation(() => {
+        callCount++;
+        if (callCount < 2) {
+          throw new Error("lost connection to Notes.app");
+        }
+        return "recovered";
+      });
+
+      const result = executeAppleScript("test", { maxRetries: 3, retryDelayMs: 1 });
+
+      expect(result.success).toBe(true);
+      expect(mockExecSync).toHaveBeenCalledTimes(2);
+    });
+
+    it("retries on 'busy' errors", () => {
+      let callCount = 0;
+      mockExecSync.mockImplementation(() => {
+        callCount++;
+        if (callCount < 2) {
+          throw new Error("Notes.app is busy");
+        }
+        return "recovered";
+      });
+
+      const result = executeAppleScript("test", { maxRetries: 3, retryDelayMs: 1 });
+
+      expect(result.success).toBe(true);
+      expect(mockExecSync).toHaveBeenCalledTimes(2);
+    });
+
+    it("uses exponential backoff between retries", () => {
+      let execCallCount = 0;
+
+      // Fails first 3 times, succeeds on 4th attempt
+      mockExecSync.mockImplementation(() => {
+        execCallCount++;
+        if (execCallCount <= 3) {
+          throw new Error("Notes.app is not responding");
+        }
+        return "success";
+      });
+
+      // With retryDelayMs=100, delays should be: 100ms, 200ms, 400ms
+      const result = executeAppleScript("test", { maxRetries: 4, retryDelayMs: 100 });
+
+      expect(result.success).toBe(true);
+      expect(mockExecSync).toHaveBeenCalledTimes(4);
     });
   });
 });

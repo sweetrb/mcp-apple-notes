@@ -176,6 +176,68 @@ export function parseAppleScriptDate(appleScriptDate: string): Date {
   return isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
+/**
+ * Parsed note properties from AppleScript output.
+ */
+interface ParsedNoteProperties {
+  title: string;
+  id: string;
+  created: Date;
+  modified: Date;
+  shared: boolean;
+  passwordProtected: boolean;
+}
+
+/**
+ * Parses AppleScript note properties output into structured data.
+ *
+ * AppleScript returns note properties in a format like:
+ * "title, id, date DayName, Month Day, Year at Time, date..., bool, bool"
+ *
+ * Dates contain commas, so we use regex to extract them safely.
+ *
+ * @param output - Raw AppleScript output string
+ * @returns Parsed properties, or null if format is invalid
+ */
+export function parseNotePropertiesOutput(output: string): ParsedNoteProperties | null {
+  // Extract dates using regex - they start with "date " and have a recognizable format
+  // Pattern matches: "date Saturday, December 27, 2025 at 3:44:02 PM"
+  const dateMatches = output.match(/date [A-Z][^,]*(?:, [A-Z][^,]*)* at \d+:\d+:\d+ [AP]M/g) || [];
+
+  // Extract title (everything before the first comma)
+  const firstComma = output.indexOf(",");
+  if (firstComma === -1) {
+    console.error("Unexpected response format: no comma found in note properties");
+    return null;
+  }
+  const title = output.substring(0, firstComma).trim();
+
+  // Extract ID (between first and second comma)
+  const afterTitle = output.substring(firstComma + 1);
+  const secondComma = afterTitle.indexOf(",");
+  if (secondComma === -1) {
+    console.error("Unexpected response format: missing second comma in note properties");
+    return null;
+  }
+  const id = afterTitle.substring(0, secondComma).trim();
+
+  // Extract boolean values from the end (shared, passwordProtected)
+  // They appear as ", true" or ", false" at the end
+  const boolPattern = /, (true|false), (true|false)$/;
+  const boolMatch = output.match(boolPattern);
+  const shared = boolMatch ? boolMatch[1] === "true" : false;
+  const passwordProtected = boolMatch ? boolMatch[2] === "true" : false;
+
+  return {
+    title,
+    id,
+    created: dateMatches[0] ? parseAppleScriptDate(dateMatches[0]) : new Date(),
+    modified: dateMatches[1] ? parseAppleScriptDate(dateMatches[1]) : new Date(),
+    shared,
+    passwordProtected,
+  };
+}
+
 // =============================================================================
 // AppleScript Template Builders
 // =============================================================================
@@ -630,49 +692,21 @@ export class AppleNotesManager {
       return null;
     }
 
-    // Parse the complex output
-    // AppleScript returns: "title, id, date DayName, Month Day, Year at Time, date..., bool, bool"
-    // Dates contain commas, so we can't use simple CSV parsing
-    const output = result.output;
-
-    // Extract dates using regex - they start with "date " and end before the next comma-space-lowercase
-    // Pattern matches: "date Saturday, December 27, 2025 at 3:44:02 PM"
-    const dateMatches =
-      output.match(/date [A-Z][^,]*(?:, [A-Z][^,]*)* at \d+:\d+:\d+ [AP]M/g) || [];
-
-    // Extract title (everything before the first comma)
-    const firstComma = output.indexOf(",");
-    if (firstComma === -1) {
-      console.error("Unexpected response format when getting note by ID");
+    // Parse the AppleScript output using the shared helper
+    const parsed = parseNotePropertiesOutput(result.output);
+    if (!parsed) {
       return null;
     }
-    const extractedTitle = output.substring(0, firstComma).trim();
-
-    // Extract ID (between first and second comma)
-    const afterTitle = output.substring(firstComma + 1);
-    const secondComma = afterTitle.indexOf(",");
-    if (secondComma === -1) {
-      console.error("Unexpected response format when getting note by ID");
-      return null;
-    }
-    const extractedId = afterTitle.substring(0, secondComma).trim();
-
-    // Extract boolean values from the end (shared, passwordProtected)
-    // They appear as ", true" or ", false" at the end
-    const boolPattern = /, (true|false), (true|false)$/;
-    const boolMatch = output.match(boolPattern);
-    const shared = boolMatch ? boolMatch[1] === "true" : false;
-    const passwordProtected = boolMatch ? boolMatch[2] === "true" : false;
 
     return {
-      id: extractedId,
-      title: extractedTitle,
+      id: parsed.id,
+      title: parsed.title,
       content: "", // Not fetched to keep response small
       tags: [],
-      created: dateMatches[0] ? parseAppleScriptDate(dateMatches[0]) : new Date(),
-      modified: dateMatches[1] ? parseAppleScriptDate(dateMatches[1]) : new Date(),
-      shared,
-      passwordProtected,
+      created: parsed.created,
+      modified: parsed.modified,
+      shared: parsed.shared,
+      passwordProtected: parsed.passwordProtected,
     };
   }
 
@@ -704,38 +738,21 @@ export class AppleNotesManager {
       return null;
     }
 
-    // Parse the complex output
-    // The output contains embedded date objects that complicate simple CSV parsing
-    const output = result.output;
-
-    // Extract dates using regex (they have a recognizable format)
-    // Pattern matches: "date Saturday, December 27, 2025 at 3:44:02 PM"
-    const dateMatches =
-      output.match(/date [A-Z][^,]*(?:, [A-Z][^,]*)* at \d+:\d+:\d+ [AP]M/g) || [];
-
-    // Extract title and ID from the beginning
-    const firstComma = output.indexOf(",");
-    const extractedTitle = output.substring(0, firstComma).trim();
-    const afterTitle = output.substring(firstComma + 1);
-    const secondComma = afterTitle.indexOf(",");
-    const extractedId = afterTitle.substring(0, secondComma).trim();
-
-    // Extract boolean values from the end (shared, passwordProtected)
-    // They appear as ", true" or ", false" at the end
-    const boolPattern = /, (true|false), (true|false)$/;
-    const boolMatch = output.match(boolPattern);
-    const shared = boolMatch ? boolMatch[1] === "true" : false;
-    const passwordProtected = boolMatch ? boolMatch[2] === "true" : false;
+    // Parse the AppleScript output using the shared helper
+    const parsed = parseNotePropertiesOutput(result.output);
+    if (!parsed) {
+      return null;
+    }
 
     return {
-      id: extractedId,
-      title: extractedTitle,
+      id: parsed.id,
+      title: parsed.title,
       content: "", // Not fetched
       tags: [],
-      created: dateMatches[0] ? parseAppleScriptDate(dateMatches[0]) : new Date(),
-      modified: dateMatches[1] ? parseAppleScriptDate(dateMatches[1]) : new Date(),
-      shared,
-      passwordProtected,
+      created: parsed.created,
+      modified: parsed.modified,
+      shared: parsed.shared,
+      passwordProtected: parsed.passwordProtected,
       account: targetAccount,
     };
   }
