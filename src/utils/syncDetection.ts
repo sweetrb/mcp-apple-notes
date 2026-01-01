@@ -64,12 +64,36 @@ const RECENT_ACTIVITY_THRESHOLD_SECONDS = 5;
 // Delay between operation and verification read (ms)
 const VERIFICATION_DELAY_MS = 500;
 
+// Cache TTL in milliseconds (2 seconds default)
+const SYNC_STATUS_CACHE_TTL_MS = 2000;
+
+// Cached sync status
+let cachedSyncStatus: SyncStatus | null = null;
+let cacheTimestamp = 0;
+
+/**
+ * Clears the sync status cache.
+ * Useful for testing or when forcing a fresh check.
+ */
+export function clearSyncStatusCache(): void {
+  cachedSyncStatus = null;
+  cacheTimestamp = 0;
+}
+
 /**
  * Gets the current iCloud sync status by querying the Notes database.
  *
+ * Results are cached for 2 seconds to avoid excessive database queries
+ * during rapid successive operations.
+ *
+ * @param useCache - Whether to use cached results (default: true)
  * @returns Sync status information
  */
-export function getSyncStatus(): SyncStatus {
+export function getSyncStatus(useCache = true): SyncStatus {
+  // Return cached result if valid
+  if (useCache && cachedSyncStatus && Date.now() - cacheTimestamp < SYNC_STATUS_CACHE_TTL_MS) {
+    return cachedSyncStatus;
+  }
   const status: SyncStatus = {
     syncDetected: false,
     pendingUpload: 0,
@@ -81,6 +105,8 @@ export function getSyncStatus(): SyncStatus {
     // Check if database exists
     if (!fs.existsSync(NOTES_DB_PATH)) {
       status.error = "Notes database not found";
+      cachedSyncStatus = status;
+      cacheTimestamp = Date.now();
       return status;
     }
 
@@ -126,6 +152,10 @@ export function getSyncStatus(): SyncStatus {
     // Don't fail the operation due to sync detection errors
     status.error = error instanceof Error ? error.message : "Failed to check sync status";
   }
+
+  // Cache the result
+  cachedSyncStatus = status;
+  cacheTimestamp = Date.now();
 
   return status;
 }
@@ -173,8 +203,8 @@ export async function withSyncAwareness<T>(
   // Wait briefly for any sync activity to settle
   await new Promise((resolve) => setTimeout(resolve, VERIFICATION_DELAY_MS));
 
-  // Check sync status after operation
-  const syncAfter = getSyncStatus();
+  // Check sync status after operation (bypass cache for fresh data)
+  const syncAfter = getSyncStatus(false);
 
   // Determine if sync may have interfered
   // Interference is likely if:
@@ -225,8 +255,8 @@ export function withSyncAwarenessSync<T>(operation: string, fn: () => T): SyncAw
   // Execute the operation
   const result = fn();
 
-  // Check sync status after operation (no delay for sync version)
-  const syncAfter = getSyncStatus();
+  // Check sync status after operation (bypass cache for fresh data)
+  const syncAfter = getSyncStatus(false);
 
   // Determine if sync may have interfered
   const pendingChanged = syncBefore.pendingUpload !== syncAfter.pendingUpload;

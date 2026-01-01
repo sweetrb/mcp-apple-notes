@@ -881,9 +881,7 @@ server.tool(
   {},
   withErrorHandling(() => {
     const exportData = notesManager.exportNotesAsJson();
-    const summary = (
-      exportData as { summary: { totalNotes: number; totalFolders: number; totalAccounts: number } }
-    ).summary;
+    const { summary } = exportData;
 
     return {
       content: [

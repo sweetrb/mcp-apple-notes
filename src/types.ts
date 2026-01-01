@@ -555,3 +555,81 @@ export interface NotesStats {
     last30d: number;
   };
 }
+
+// =============================================================================
+// Export Types
+// =============================================================================
+
+/**
+ * Exported note data structure.
+ */
+export interface ExportedNote {
+  /** Unique identifier */
+  id: string;
+  /** Note title */
+  title: string;
+  /** HTML content (empty for password-protected notes) */
+  content: string;
+  /** Plain text content (extracted from HTML) */
+  plaintext: string;
+  /** Folder containing the note */
+  folder: string;
+  /** Account containing the note */
+  account: string;
+  /** Creation timestamp (ISO 8601) */
+  created: string;
+  /** Last modification timestamp (ISO 8601) */
+  modified: string;
+  /** Whether note is shared with collaborators */
+  shared: boolean;
+  /** Whether note is password protected */
+  passwordProtected: boolean;
+}
+
+/**
+ * Exported folder data structure.
+ */
+export interface ExportedFolder {
+  /** Folder name */
+  name: string;
+  /** Notes in this folder */
+  notes: ExportedNote[];
+}
+
+/**
+ * Exported account data structure.
+ */
+export interface ExportedAccount {
+  /** Account name (e.g., "iCloud") */
+  name: string;
+  /** Folders in this account */
+  folders: ExportedFolder[];
+}
+
+/**
+ * Complete export data structure.
+ *
+ * @example
+ * ```typescript
+ * const export: NotesExport = {
+ *   exportDate: "2025-01-01T12:00:00.000Z",
+ *   version: "1.0",
+ *   accounts: [...],
+ *   summary: { totalNotes: 100, totalFolders: 10, totalAccounts: 2 }
+ * };
+ * ```
+ */
+export interface NotesExport {
+  /** ISO 8601 timestamp of when export was created */
+  exportDate: string;
+  /** Export format version */
+  version: string;
+  /** All accounts with their folders and notes */
+  accounts: ExportedAccount[];
+  /** Summary statistics */
+  summary: {
+    totalNotes: number;
+    totalFolders: number;
+    totalAccounts: number;
+  };
+}

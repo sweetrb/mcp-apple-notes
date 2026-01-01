@@ -25,6 +25,10 @@ import type {
   AccountStats,
   FolderStats,
   Attachment,
+  NotesExport,
+  ExportedAccount,
+  ExportedFolder,
+  ExportedNote,
 } from "@/types.js";
 import { executeAppleScript } from "@/utils/applescript.js";
 import TurndownService from "turndown";
@@ -89,6 +93,55 @@ export function escapeForAppleScript(text: string): string {
   escaped = escaped.replace(/\t/g, "<br>");
 
   return escaped;
+}
+
+/**
+ * Escapes already-HTML content for embedding in AppleScript string literals.
+ *
+ * Unlike escapeForAppleScript(), this function is designed for content that
+ * is already HTML (e.g., from getNoteContent()). It only escapes the
+ * AppleScript string delimiter (double quotes) and handles backslashes,
+ * without re-encoding HTML entities.
+ *
+ * @param htmlContent - HTML content from Notes.app
+ * @returns Content safe for AppleScript string embedding
+ *
+ * @example
+ * escapeHtmlForAppleScript('<div>Hello "World"</div>')
+ * // Returns: <div>Hello \"World\"</div>
+ */
+export function escapeHtmlForAppleScript(htmlContent: string): string {
+  if (!htmlContent) {
+    return "";
+  }
+
+  // For already-HTML content, we only need to:
+  // 1. Escape backslashes for AppleScript (\ → \\)
+  // 2. Escape double quotes for AppleScript (" → \")
+  //
+  // We do NOT re-encode HTML entities since content is already HTML from Notes.app
+  return htmlContent.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/**
+ * Counter for generating unique fallback IDs within the same millisecond.
+ */
+let fallbackIdCounter = 0;
+
+/**
+ * Generates a unique fallback ID when AppleScript doesn't return a valid ID.
+ *
+ * This creates a temporary ID that's unique within this session. Format:
+ * "temp-{timestamp}-{counter}"
+ *
+ * @returns A unique temporary ID string
+ *
+ * @example
+ * generateFallbackId() // Returns: "temp-1704067200000-0"
+ * generateFallbackId() // Returns: "temp-1704067200000-1"
+ */
+export function generateFallbackId(): string {
+  return `temp-${Date.now()}-${fallbackIdCounter++}`;
 }
 
 /**
@@ -378,7 +431,7 @@ export class AppleNotesManager {
     // Return a Note object representing the created note with real ID
     const now = new Date();
     return {
-      id: noteId || Date.now().toString(), // Use real ID, fallback to timestamp
+      id: noteId || generateFallbackId(), // Use real ID, fallback to unique temp ID
       title,
       content,
       tags,
@@ -475,7 +528,7 @@ export class AppleNotesManager {
       const [title, id, folder] = item.split("|||");
       if (!title?.trim()) continue;
       notes.push({
-        id: id?.trim() || Date.now().toString(), // Use real ID, fallback to timestamp
+        id: id?.trim() || generateFallbackId(), // Use real ID, fallback to unique temp ID
         title: title.trim(),
         content: "", // Not fetched in search
         tags: [] as string[],
@@ -1062,9 +1115,9 @@ export class AppleNotesManager {
     }
 
     // Step 3: Create a copy in the destination folder
-    // We need to escape the HTML content for AppleScript embedding
+    // Content is already HTML from getNoteContent(), so use escapeHtmlForAppleScript()
     const safeFolder = escapeForAppleScript(destinationFolder);
-    const safeContent = originalContent.replace(/"/g, '\\"').replace(/'/g, "'\\''");
+    const safeContent = escapeHtmlForAppleScript(originalContent);
 
     const createCommand = `make new note at folder "${safeFolder}" with properties {body:"${safeContent}"}`;
     const script = buildAccountScopedScript({ account: targetAccount }, createCommand);
@@ -1119,8 +1172,9 @@ export class AppleNotesManager {
     }
 
     // Step 2: Create a copy in the destination folder
+    // Content is already HTML from getNoteContentById(), so use escapeHtmlForAppleScript()
     const safeFolder = escapeForAppleScript(destinationFolder);
-    const safeContent = originalContent.replace(/"/g, '\\"').replace(/'/g, "'\\''");
+    const safeContent = escapeHtmlForAppleScript(originalContent);
 
     const createCommand = `make new note at folder "${safeFolder}" with properties {body:"${safeContent}"}`;
     const script = buildAccountScopedScript({ account: targetAccount }, createCommand);
@@ -1641,7 +1695,7 @@ export class AppleNotesManager {
   /**
    * Export structure for a single note.
    */
-  private exportNote(note: Note, content: string): object {
+  private exportNote(note: Note, content: string): ExportedNote {
     return {
       id: note.id,
       title: note.title,
@@ -1693,14 +1747,9 @@ export class AppleNotesManager {
    * fs.writeFileSync('notes-backup.json', JSON.stringify(snapshot, null, 2));
    * ```
    */
-  exportNotesAsJson(): object {
+  exportNotesAsJson(): NotesExport {
     const accounts = this.listAccounts();
-    const exportData: {
-      exportDate: string;
-      version: string;
-      accounts: object[];
-      summary: { totalNotes: number; totalFolders: number; totalAccounts: number };
-    } = {
+    const exportData: NotesExport = {
       exportDate: new Date().toISOString(),
       version: "1.0",
       accounts: [],
@@ -1709,19 +1758,13 @@ export class AppleNotesManager {
 
     for (const account of accounts) {
       const folders = this.listFolders(account.name);
-      const accountData: {
-        name: string;
-        folders: object[];
-      } = {
+      const accountData: ExportedAccount = {
         name: account.name,
         folders: [],
       };
 
       for (const folder of folders) {
-        const folderData: {
-          name: string;
-          notes: object[];
-        } = {
+        const folderData: ExportedFolder = {
           name: folder.name,
           notes: [],
         };

@@ -10,6 +10,7 @@ import {
   withSyncAwarenessSync,
   isSyncActive,
   getSyncStatusSummary,
+  clearSyncStatusCache,
   type SyncStatus,
 } from "./syncDetection.js";
 
@@ -34,6 +35,7 @@ const mockStatSync = vi.mocked(fs.statSync);
 describe("getSyncStatus", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearSyncStatusCache(); // Clear cache between tests
   });
 
   it("returns error when database not found", () => {
@@ -162,6 +164,7 @@ describe("logSyncWarning", () => {
 describe("withSyncAwareness", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearSyncStatusCache();
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
@@ -205,6 +208,7 @@ describe("withSyncAwareness", () => {
 describe("withSyncAwarenessSync", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearSyncStatusCache();
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
@@ -230,6 +234,7 @@ describe("withSyncAwarenessSync", () => {
 describe("isSyncActive", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearSyncStatusCache();
   });
 
   it("returns true when sync is active", () => {
@@ -256,6 +261,7 @@ describe("isSyncActive", () => {
 describe("getSyncStatusSummary", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    clearSyncStatusCache();
   });
 
   it("returns idle message when no sync activity", () => {

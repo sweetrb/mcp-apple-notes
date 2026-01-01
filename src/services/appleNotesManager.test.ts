@@ -15,6 +15,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   AppleNotesManager,
   escapeForAppleScript,
+  escapeHtmlForAppleScript,
   parseAppleScriptDate,
 } from "./appleNotesManager.js";
 
@@ -144,6 +145,52 @@ describe("escapeForAppleScript", () => {
       // Single quotes pass through, double quotes are escaped
       const result = escapeForAppleScript("'''\"\"\"");
       expect(result).toBe("'''\\\"\\\"\\\"");
+    });
+  });
+});
+
+// =============================================================================
+// HTML Content Escaping Tests (for already-HTML content)
+// =============================================================================
+
+describe("escapeHtmlForAppleScript", () => {
+  describe("basic escaping", () => {
+    it("returns empty string for null/undefined", () => {
+      expect(escapeHtmlForAppleScript("")).toBe("");
+      expect(escapeHtmlForAppleScript(null as unknown as string)).toBe("");
+      expect(escapeHtmlForAppleScript(undefined as unknown as string)).toBe("");
+    });
+
+    it("escapes double quotes for AppleScript", () => {
+      const result = escapeHtmlForAppleScript('<div>Hello "World"</div>');
+      expect(result).toBe('<div>Hello \\"World\\"</div>');
+    });
+
+    it("escapes backslashes for AppleScript", () => {
+      const result = escapeHtmlForAppleScript("<div>Path: C:\\Users\\test</div>");
+      expect(result).toBe("<div>Path: C:\\\\Users\\\\test</div>");
+    });
+
+    it("handles both backslashes and quotes", () => {
+      const result = escapeHtmlForAppleScript('<div>Path: "C:\\test"</div>');
+      expect(result).toBe('<div>Path: \\"C:\\\\test\\"</div>');
+    });
+  });
+
+  describe("preserves HTML content", () => {
+    it("does not re-encode existing HTML entities", () => {
+      const result = escapeHtmlForAppleScript("<div>&amp; &lt; &gt;</div>");
+      expect(result).toBe("<div>&amp; &lt; &gt;</div>");
+    });
+
+    it("preserves HTML tags", () => {
+      const result = escapeHtmlForAppleScript("<div><b>Bold</b><br><i>Italic</i></div>");
+      expect(result).toBe("<div><b>Bold</b><br><i>Italic</i></div>");
+    });
+
+    it("preserves numeric HTML entities", () => {
+      const result = escapeHtmlForAppleScript("<div>&#92; &#60; &#62;</div>");
+      expect(result).toBe("<div>&#92; &#60; &#62;</div>");
     });
   });
 });
