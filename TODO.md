@@ -1,5 +1,7 @@
 # Apple Notes MCP - Improvement Roadmap
 
+*As of v1.2.18*
+
 Based on technical research into Apple Notes internals and analysis of other implementations, here are remaining improvements.
 
 ## Future Considerations
@@ -42,5 +44,5 @@ Based on technical research into Apple Notes internals and analysis of other imp
 - Search operations: < 2s for 1000 notes
 - Batch operations: Linear scaling with count
 
-*Created: December 2024*
+*Created: December 2025*
 *Based on research in [TECHNICAL_NOTES.md](./TECHNICAL_NOTES.md)*
