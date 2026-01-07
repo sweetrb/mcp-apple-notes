@@ -25,7 +25,7 @@ The AI assistant communicates with this server, which then uses AppleScript to i
 If you're using [Claude Code](https://claude.com/product/claude-code) (in Terminal or VS Code), just ask Claude to install it:
 
 ```
-Install the apple-notes-mcp MCP server so you can help me manage my Apple Notes
+Install the sweetrb/apple-notes-mcp MCP server so you can help me manage my Apple Notes
 ```
 
 Claude will handle the installation and configuration automatically.
