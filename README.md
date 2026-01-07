@@ -45,7 +45,7 @@ This method also installs a **skill** that teaches Claude when and how to use Ap
 
 **1. Install the server:**
 ```bash
-npm install -g apple-notes-mcp
+npm install -g github:sweetrb/apple-notes-mcp
 ```
 
 **2. Add to Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
@@ -595,7 +595,7 @@ AI: [calls move-note with title="Old Meeting Notes", folder="Archive"]
 ### npm (Recommended)
 
 ```bash
-npm install -g apple-notes-mcp
+npm install -g github:sweetrb/apple-notes-mcp
 ```
 
 ### From Source
