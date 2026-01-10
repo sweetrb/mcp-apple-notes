@@ -77,6 +77,23 @@ delete-note id="x-coredata://ABC/ICNote/p123"
 - The title becomes the first line of the note
 - `create-note` returns the new note's ID for subsequent operations
 
+### Whitespace Accumulation on Iterative Updates
+
+**Important:** When repeatedly updating a note (especially with HTML content), Apple Notes can accumulate whitespace artifacts - specifically `<div><br></div>` tags that persist between sections even after removing them from your content.
+
+**Symptoms:**
+- Large gaps appear between sections that weren't in your content
+- Reading the note back shows multiple blank `<div><br></div>` lines
+- The whitespace persists even when you update with clean content
+
+**Cause:** Apple Notes' internal HTML processing preserves empty divs from previous edits. Each update can leave behind formatting artifacts.
+
+**Solution:** If a note has accumulated unwanted whitespace:
+1. Delete the note with `delete-note`
+2. Create a fresh note with `create-note`
+
+This is more reliable than trying to fix the whitespace through updates, as the artifacts are baked into the note's internal representation.
+
 ### search-notes
 - Set `searchContent: true` to search note body, not just titles
 - Searches are case-insensitive
